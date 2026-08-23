@@ -16,20 +16,13 @@ class Exact2011Model(nn.Module):
     def forward(self, x):
         return self.sigmoid(self.output(self.sigmoid(self.hidden(x))))
 
-def get_features_matrix(matrix, win):
-    size = matrix.shape[0]
-    feat_dim = matrix.shape[1]
-    total_dim = feat_dim * (2 * win + 1)
-    features = np.zeros((size, total_dim), dtype=np.float32)
-    
-    for i in range(win, size - win):
-        slice_list = [matrix[i]]
-        for m in range(1, win + 1):
-            slice_list.append(matrix[i + m])
-        for m in range(1, win + 1):
-            slice_list.append(matrix[i - m])
-        features[i] = np.concatenate(slice_list)
-    return features
+def get_features(matrix, pos, win):
+    feat = list(matrix[pos])
+    for m in range(1, win + 1):
+        feat.extend(matrix[pos + m])
+    for m in range(1, win + 1):
+        feat.extend(matrix[pos - m])
+    return feat
 
 def read_pssm_from_text(file_lines):
     amino_acids = 'ACDEFGHIKLMNPQRSTVWY'
@@ -44,7 +37,7 @@ def read_pssm_from_text(file_lines):
                 residues.append(f"{res}{pos}")
                 seq_bin.append([1.0 if res == aa else 0.0 for aa in amino_acids])
                 pssm.append([float(x) for x in parts[2:22]])
-    return np.array(seq_bin, dtype=np.float32), np.array(pssm, dtype=np.float32), residues
+    return np.array(seq_bin), np.array(pssm), residues
 
 def apply_r_smoothing(matrix, halfwin=1, step1=4, step2=1):
     size1, size2 = matrix.shape
@@ -62,12 +55,9 @@ def apply_r_smoothing(matrix, halfwin=1, step1=4, step2=1):
                 smoothed[i, j] = xx / cnt
     return smoothed
 
-def run_prediction(lines1, lines2):
-    start_time = datetime.now().strftime("%a %b %d %H:%M:%S %Y")
-    
-    seq1, pssm1, res1 = read_pssm_from_text(lines1)
-    seq2, pssm2, res2 = read_pssm_from_text(lines2)
-
+# Cached model loader to prevent reloading weights on every run
+@st_cache_resource if 'st_cache_resource' in globals() else lambda f: f
+def load_ensemble_models():
     weights = torch.load('ppip_ensemble_weights.pt', map_location='cpu')
     models = {}
     for key, w in weights.items():
@@ -75,9 +65,16 @@ def run_prediction(lines1, lines2):
         model.load_state_dict({k: v for k, v in w.items() if k != 'input_dim'})
         model.eval()
         models[key] = model
+    return models
 
-    len_res1 = len(res1)
-    len_res2 = len(res2)
+def run_prediction(lines1, lines2):
+    start_time = datetime.now().strftime("%a %b %d %H:%M:%S %Y")
+    
+    seq1, pssm1, res1 = read_pssm_from_text(lines1)
+    seq2, pssm2, res2 = read_pssm_from_text(lines2)
+
+    models = load_ensemble_models()
+    raw_pairs = []
 
     valid_configs = []
     for pssmwin in range(-1, 4):
@@ -85,88 +82,59 @@ def run_prediction(lines1, lines2):
             if pssmwin + binwin > -2:
                 valid_configs.append((pssmwin, binwin))
 
-    seq_feats = {w: (get_features_matrix(seq1, w), get_features_matrix(seq2, w)) for w in range(1, 4)}
-    pssm_feats = {w: (get_features_matrix(pssm1, w), get_features_matrix(pssm2, w)) for w in range(1, 4)}
+    len_res1 = len(res1)
+    len_res2 = len(res2)
 
-    raw_pairs = []
-    pair_map = {}
-
-    for pssmwin, binwin in valid_configs:
-        model_key = f"{pssmwin}_{binwin}"
-        model = models[model_key]
-        
-        valid_i, valid_j = [], []
-        for i in range(5, len_res1 - 5):
-            if pssmwin > -1 and (i - pssmwin < 0 or i + pssmwin >= len_res1):
-                continue
-            if binwin > -1 and (i - binwin < 0 or i + binwin >= len_res1):
-                continue
-            for j in range(5, len_res2 - 5):
-                if pssmwin > -1 and (j - pssmwin < 0 or j + pssmwin >= len_res2):
-                    continue
-                if binwin > -1 and (j - binwin < 0 or j + binwin >= len_res2):
-                    continue
-                valid_i.append(i)
-                valid_j.append(j)
-
-        if not valid_i:
-            continue
-
-        valid_i = np.array(valid_i)
-        valid_j = np.array(valid_j)
-
-        fwd_list, rev_list = [], []
-        if binwin > -1:
-            b1_1, b2_1 = seq_feats[binwin]
-            fwd_list.append(b1_1[valid_i])
-            fwd_list.append(b2_1[valid_j])
-            rev_list.append(b2_1[valid_j])
-            rev_list.append(b1_1[valid_i])
+    for i in range(5, len_res1 - 5):
+        for j in range(5, len_res2 - 5):
+            pair_name = f"{res1[i]}:{res2[j]}"
+            pair_scores_fwd, pair_scores_rev = [], []
             
-        if pssmwin > -1:
-            p1_1, p2_1 = pssm_feats[pssmwin]
-            fwd_list.append(p1_1[valid_i])
-            fwd_list.append(p2_1[valid_j])
-            rev_list.append(p2_1[valid_j])
-            rev_list.append(p1_1[valid_i])
+            for pssmwin, binwin in valid_configs:
+                if pssmwin > -1 and (i - pssmwin < 0 or i + pssmwin >= len_res1 or j - pssmwin < 0 or j + pssmwin >= len_res2):
+                    continue
+                if binwin > -1 and (i - binwin < 0 or i + binwin >= len_res1 or j - binwin < 0 or j + binwin >= len_res2):
+                    continue
 
-        if not fwd_list:
-            continue
+                features_fwd, features_rev = [], []
+                if binwin > -1:
+                    b1 = get_features(seq1, i, binwin)
+                    b2 = get_features(seq2, j, binwin)
+                    features_fwd.extend(b1)
+                    features_fwd.extend(b2)
+                    features_rev.extend(b2)
+                    features_rev.extend(b1)
+                    
+                if pssmwin > -1:
+                    p1 = get_features(pssm1, i, pssmwin)
+                    p2 = get_features(pssm2, j, pssmwin)
+                    features_fwd.extend(p1)
+                    features_fwd.extend(p2)
+                    features_rev.extend(p2)
+                    features_rev.extend(p1)
+                    
+                x_fwd = torch.tensor([features_fwd], dtype=torch.float32)
+                x_rev = torch.tensor([features_rev], dtype=torch.float32)
+                
+                with torch.no_grad():
+                    model = models[f"{pssmwin}_{binwin}"]
+                    pair_scores_fwd.append(model(x_fwd).item())
+                    pair_scores_rev.append(model(x_rev).item())
+                        
+            if pair_scores_fwd:
+                avg_fwd = sum(pair_scores_fwd) / len(pair_scores_fwd)
+                avg_rev = sum(pair_scores_rev) / len(pair_scores_rev)
+                final_score = (avg_fwd + avg_rev) / 2.0
+                raw_pairs.append((pair_name, final_score))
 
-        x_fwd = torch.tensor(np.concatenate(fwd_list, axis=1), dtype=torch.float32)
-        x_rev = torch.tensor(np.concatenate(rev_list, axis=1), dtype=torch.float32)
-
-        with torch.no_grad():
-            scores_fwd = model(x_fwd).squeeze(1).numpy()
-            scores_rev = model(x_rev).squeeze(1).numpy()
-
-        for idx in range(len(valid_i)):
-            i, j = valid_i[idx], valid_j[idx]
-            name = f"{res1[i]}:{res2[j]}"
-            if name in pair_map:
-                pair_map[name]['fwd_sum'] += scores_fwd[idx]
-                pair_map[name]['rev_sum'] += scores_rev[idx]
-                pair_map[name]['count'] += 1
-            else:
-                entry = {'name': name, 'fwd_sum': scores_fwd[idx], 'rev_sum': scores_rev[idx], 'count': 1}
-                pair_map[name] = entry
-                raw_pairs.append(entry)
-
-    final_pairs = []
-    for p in raw_pairs:
-        avg_fwd = p['fwd_sum'] / p['count']
-        avg_rev = p['rev_sum'] / p['count']
-        final_score = (avg_fwd + avg_rev) / 2.0
-        final_pairs.append((p['name'], float(final_score)))
-
-    sorted_pairs = sorted(final_pairs, key=lambda x: x[1], reverse=True)
+    sorted_pairs = sorted(raw_pairs, key=lambda x: x[1], reverse=True)
     top_200 = sorted_pairs[:200]
 
-    unique_r1 = sorted(list(set([p[0].split(":")[0] for p in final_pairs])), key=lambda x: int(re.search(r'\d+', x).group()))
-    unique_r2 = sorted(list(set([p[0].split(":")[1] for p in final_pairs])), key=lambda x: int(re.search(r'\d+', x).group()))
+    unique_r1 = sorted(list(set([p[0].split(":")[0] for p in raw_pairs])), key=lambda x: int(re.search(r'\d+', x).group()))
+    unique_r2 = sorted(list(set([p[0].split(":")[1] for p in raw_pairs])), key=lambda x: int(re.search(r'\d+', x).group()))
     
     matrix = np.zeros((len(unique_r1), len(unique_r2)))
-    score_lookup = dict(final_pairs)
+    score_lookup = dict(raw_pairs)
     for i, r1 in enumerate(unique_r1):
         for j, r2 in enumerate(unique_r2):
             matrix[i, j] = score_lookup.get(f"{r1}:{r2}", 0.0)
@@ -177,7 +145,7 @@ def run_prediction(lines1, lines2):
     threshold = avscore + (3 * sdscore)
 
     chain1_scores, chain2_scores = {}, {}
-    for pair_name, score in final_pairs:
+    for pair_name, score in raw_pairs:
         c1, c2 = pair_name.split(":")
         chain1_scores.setdefault(c1, []).append(score)
         chain2_scores.setdefault(c2, []).append(score)
@@ -186,7 +154,7 @@ def run_prediction(lines1, lines2):
     time_log = f"Start time: {start_time}\nPattern file completed: {start_time}\nStage 1 predictions completed: {start_time}\nEnd time: {end_time}"
 
     return {
-        "all_pairs": final_pairs,
+        "all_pairs": raw_pairs,
         "top_200": top_200,
         "chain1": {k: max(v) for k, v in chain1_scores.items()},
         "chain2": {k: max(v) for k, v in chain2_scores.items()},
