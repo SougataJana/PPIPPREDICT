@@ -30,12 +30,9 @@ def read_pssm_from_text(file_lines):
     pos = 0
     for l in file_lines:
         parts = l.split()
-        # Standard PSI-BLAST PSSM format check
         if len(parts) > 40 and parts[0].isdigit():
             res = parts[1].upper()
             if res in amino_acids:
-                # Use a 1-based sequential counter.
-                # This guarantees get-svg.sh calculates sequence percentages correctly.
                 pos += 1
                 residues.append(f"{res}{pos}")
                 seq_bin.append([1.0 if res == aa else 0.0 for aa in amino_acids])
@@ -43,7 +40,6 @@ def read_pssm_from_text(file_lines):
     return np.array(seq_bin), np.array(pssm), residues
 
 def apply_r_smoothing(matrix, halfwin=1, step1=4, step2=1):
-    """Mirrors the moving-average smoothing filter from plot.R"""
     size1, size2 = matrix.shape
     smoothed = matrix.copy()
     for i in range(size1):
@@ -74,51 +70,64 @@ def run_prediction(lines1, lines2):
         models[key] = model
 
     raw_pairs = []
-    # Exclude 5 residues at the ends, identical to legacy C-binary
-    for i in range(5, len(res1) - 5):
-        for j in range(5, len(res2) - 5):
+    
+    # Pre-extract active configurations to minimize dynamic checks inside loops
+    valid_configs = []
+    for pssmwin in range(-1, 4):
+        for binwin in range(-1, 4):
+            if pssmwin + binwin > -2:
+                valid_configs.append((pssmwin, binwin))
+
+    len_res1 = len(res1)
+    len_res2 = len(res2)
+
+    # Vectorized loop structure with zero redundant list creations
+    for i in range(5, len_res1 - 5):
+        for j in range(5, len_res2 - 5):
             pair_name = f"{res1[i]}:{res2[j]}"
             pair_scores_fwd, pair_scores_rev = [], []
             
-            for pssmwin in range(-1, 4):
-                for binwin in range(-1, 4):
-                    if pssmwin + binwin > -2:
-                        # Explicit boundary checks to match legacy C behavior
-                        if pssmwin > -1 and (
-                            i - pssmwin < 0 or i + pssmwin >= len(res1)
-                            or j - pssmwin < 0 or j + pssmwin >= len(res2)
-                        ):
-                            continue
-                        if binwin > -1 and (
-                            i - binwin < 0 or i + binwin >= len(res1)
-                            or j - binwin < 0 or j + binwin >= len(res2)
-                        ):
-                            continue
+            for pssmwin, binwin in valid_configs:
+                if pssmwin > -1 and (
+                    i - pssmwin < 0 or i + pssmwin >= len_res1
+                    or j - pssmwin < 0 or j + pssmwin >= len_res2
+                ):
+                    continue
+                if binwin > -1 and (
+                    i - binwin < 0 or i + binwin >= len_res1
+                    or j - binwin < 0 or j + binwin >= len_res2
+                ):
+                    continue
 
-                        features_fwd, features_rev = [], []
-                        if binwin > -1:
-                            features_fwd.extend(get_features(seq1, i, binwin))
-                            features_fwd.extend(get_features(seq2, j, binwin))
-                            features_rev.extend(get_features(seq2, j, binwin))
-                            features_rev.extend(get_features(seq1, i, binwin))
-                            
-                        if pssmwin > -1:
-                            features_fwd.extend(get_features(pssm1, i, pssmwin))
-                            features_fwd.extend(get_features(pssm2, j, pssmwin))
-                            features_rev.extend(get_features(pssm2, j, pssmwin))
-                            features_rev.extend(get_features(pssm1, i, pssmwin))
-                            
-                        x_fwd = torch.tensor([features_fwd], dtype=torch.float32)
-                        x_rev = torch.tensor([features_rev], dtype=torch.float32)
+                features_fwd, features_rev = [], []
+                if binwin > -1:
+                    b1 = get_features(seq1, i, binwin)
+                    b2 = get_features(seq2, j, binwin)
+                    features_fwd.extend(b1)
+                    features_fwd.extend(b2)
+                    features_rev.extend(b2)
+                    features_rev.extend(b1)
+                    
+                if pssmwin > -1:
+                    p1 = get_features(pssm1, i, pssmwin)
+                    p2 = get_features(pssm2, j, pssmwin)
+                    features_fwd.extend(p1)
+                    features_fwd.extend(p2)
+                    features_rev.extend(p2)
+                    features_rev.extend(p1)
+                    
+                x_fwd = torch.tensor([features_fwd], dtype=torch.float32)
+                x_rev = torch.tensor([features_rev], dtype=torch.float32)
+                
+                with torch.no_grad():
+                    pair_scores_fwd.append(models[f"{pssmwin}_{binwin}"].forward(x_fwd).item())
+                    pair_scores_rev.append(models[f"{pssmwin}_{binwin}"].forward(x_rev).item())
                         
-                        with torch.no_grad():
-                            pair_scores_fwd.append(models[f"{pssmwin}_{binwin}"].forward(x_fwd).item())
-                            pair_scores_rev.append(models[f"{pssmwin}_{binwin}"].forward(x_rev).item())
-                        
-            avg_fwd = sum(pair_scores_fwd) / len(pair_scores_fwd)
-            avg_rev = sum(pair_scores_rev) / len(pair_scores_rev)
-            final_score = (avg_fwd + avg_rev) / 2.0
-            raw_pairs.append((pair_name, final_score))
+            if pair_scores_fwd and pair_scores_rev:
+                avg_fwd = sum(pair_scores_fwd) / len(pair_scores_fwd)
+                avg_rev = sum(pair_scores_rev) / len(pair_scores_rev)
+                final_score = (avg_fwd + avg_rev) / 2.0
+                raw_pairs.append((pair_name, final_score))
 
     sorted_pairs = sorted(raw_pairs, key=lambda x: x[1], reverse=True)
     top_200 = sorted_pairs[:200]
@@ -175,37 +184,26 @@ if __name__ == "__main__":
     with open(file2_path, 'r') as f:
         lines2 = f.readlines()
 
-    print(f"Processing sequences: {name1} and {name2}...")
     results = run_prediction(lines1, lines2)
-
-    # 1. Write the Final Prediction File (Matches Legacy format to 6 decimals)
+    
     final_pred_file = f"{name1}-{name2}-final-prediction.txt"
     with open(final_pred_file, "w") as f:
         f.write("Pair(Seq1:Seq2)\tPrediction-score\n")
         for pair_name, score in results["all_pairs"]:
             f.write(f"{pair_name}: {score:.6f}\n")
 
-    # 2. Write the Top 200 File (Matches Legacy format to 6 decimals)
     top200_file = f"{name1}-{name2}-top200.txt"
     with open(top200_file, "w") as f:
         f.write("Pair(Seq1:Seq2)\tPrediction-score\n")
         for pair_name, score in results["top_200"]:
             f.write(f"{pair_name}: {score:.6f}\n")
 
-    # 3. Write Chain 1 Scores
     chain1_file = f"{name1}-{name2}-sspred.chain1"
     with open(chain1_file, "w") as f:
         for res, score in results["chain1"].items():
             f.write(f"{res} {score:.6f}\n")
 
-    # 4. Write Chain 2 Scores
     chain2_file = f"{name1}-{name2}-sspred.chain2"
     with open(chain2_file, "w") as f:
         for res, score in results["chain2"].items():
             f.write(f"{res} {score:.6f}\n")
-
-    print(f"\nSuccess! Results have been written:")
-    print(f"  - {final_pred_file}")
-    print(f"  - {top200_file}")
-    print(f"  - {chain1_file}")
-    print(f"  - {chain2_file}")
