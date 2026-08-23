@@ -17,10 +17,8 @@ class Exact2011Model(nn.Module):
         return self.sigmoid(self.output(self.sigmoid(self.hidden(x))))
 
 def get_features_matrix(matrix, win):
-    """Precompute sliding window features for all positions in a matrix efficiently."""
     size = matrix.shape[0]
     feat_dim = matrix.shape[1]
-    # Total features per position: center + win left + win right
     total_dim = feat_dim * (2 * win + 1)
     features = np.zeros((size, total_dim), dtype=np.float32)
     
@@ -87,18 +85,16 @@ def run_prediction(lines1, lines2):
             if pssmwin + binwin > -2:
                 valid_configs.append((pssmwin, binwin))
 
-    # Precompute all window features for valid sizes (-1 to 3)
     seq_feats = {w: (get_features_matrix(seq1, w), get_features_matrix(seq2, w)) for w in range(1, 4)}
     pssm_feats = {w: (get_features_matrix(pssm1, w), get_features_matrix(pssm2, w)) for w in range(1, 4)}
 
     raw_pairs = []
+    pair_map = {}
 
-    # Vectorized loop structure across residue pairs with batch evaluation
     for pssmwin, binwin in valid_configs:
         model_key = f"{pssmwin}_{binwin}"
         model = models[model_key]
         
-        # Collect all valid index pairs for this configuration
         valid_i, valid_j = [], []
         for i in range(5, len_res1 - 5):
             if pssmwin > -1 and (i - pssmwin < 0 or i + pssmwin >= len_res1):
@@ -119,7 +115,6 @@ def run_prediction(lines1, lines2):
         valid_i = np.array(valid_i)
         valid_j = np.array(valid_j)
 
-        # Build feature vectors for forward and reverse directions
         fwd_list, rev_list = [], []
         if binwin > -1:
             b1_1, b2_1 = seq_feats[binwin]
@@ -135,6 +130,9 @@ def run_prediction(lines1, lines2):
             rev_list.append(p2_1[valid_j])
             rev_list.append(p1_1[valid_i])
 
+        if not fwd_list:
+            continue
+
         x_fwd = torch.tensor(np.concatenate(fwd_list, axis=1), dtype=torch.float32)
         x_rev = torch.tensor(np.concatenate(rev_list, axis=1), dtype=torch.float32)
 
@@ -142,32 +140,18 @@ def run_prediction(lines1, lines2):
             scores_fwd = model(x_fwd).squeeze(1).numpy()
             scores_rev = model(x_rev).squeeze(1).numpy()
 
-        # Accumulate results across configurations
-        if not raw_pairs:
-            for idx in range(len(valid_i)):
-                i, j = valid_i[idx], valid_j[idx]
-                raw_pairs.append({
-                    'name': f"{res1[i]}:{res2[j]}",
-                    'fwd_sum': scores_fwd[idx],
-                    'rev_sum': scores_rev[idx],
-                    'count': 1
-                })
-            # Convert list to dict for fast O(1) accumulation
-            pair_map = {p['name']: p for p in raw_pairs}
-        else:
-            for idx in range(len(valid_i)):
-                i, j = valid_i[idx], valid_j[idx]
-                name = f"{res1[i]}:{res2[j]}"
-                if name in pair_map:
-                    pair_map[name]['fwd_sum'] += scores_fwd[idx]
-                    pair_map[name]['rev_sum'] += scores_rev[idx]
-                    pair_map[name]['count'] += 1
-                else:
-                    entry = {'name': name, 'fwd_sum': scores_fwd[idx], 'rev_sum': scores_rev[idx], 'count': 1}
-                    pair_map[name] = entry
-                    raw_pairs.append(entry)
+        for idx in range(len(valid_i)):
+            i, j = valid_i[idx], valid_j[idx]
+            name = f"{res1[i]}:{res2[j]}"
+            if name in pair_map:
+                pair_map[name]['fwd_sum'] += scores_fwd[idx]
+                pair_map[name]['rev_sum'] += scores_rev[idx]
+                pair_map[name]['count'] += 1
+            else:
+                entry = {'name': name, 'fwd_sum': scores_fwd[idx], 'rev_sum': scores_rev[idx], 'count': 1}
+                pair_map[name] = entry
+                raw_pairs.append(entry)
 
-    # Compute final averaged scores
     final_pairs = []
     for p in raw_pairs:
         avg_fwd = p['fwd_sum'] / p['count']
