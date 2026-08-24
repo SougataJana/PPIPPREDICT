@@ -12,6 +12,11 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+from inference import load_models, run_prediction
+
+@st.cache_resource
+def get_models():
+    return load_models("ppip_ensemble_weights.pt")
 
 st.set_page_config(
     page_title="PPIP Explorer | Structural Biology Suite",
@@ -326,8 +331,8 @@ if "results" not in st.session_state:
         st.markdown("1. **Pattern Extraction:** Slides multiple window sizes (-1 to 3) across sequences, extracting local neighborhood PSSM profiles.")
         st.markdown("2. **Ensemble Neural Network Scoring:** 24 distinct pre-trained Artificial Neural Networks perform symmetric forward passes to score candidate interactions.")
         st.markdown("3. **Stage-2 Composition:** The parallel predictions are concatenated column-wise, fusing the 24 independent network outputs.")
-        st.markdown("4. **Matrix Smoothing:** The resulting bipartite scoring matrix is smoothed using a moving-average filter.")
-        st.markdown("5. **Final Ranking:** The highest-probability residue pairs are extracted.")
+        st.markdown("4. **Final Ranking:** Pair-wise scores are ranked directly (unsmoothed) to select the top 200 candidate interactions, following Ahmad & Mizuguchi (2011).")
+        st.markdown("5. **Visualization Smoothing (app-only):** For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked pairs above.")
         st.markdown('<div style="background: rgba(0, 242, 254, 0.05); border: 1px solid rgba(0, 242, 254, 0.2); padding: 15px; border-radius: 8px; margin-top: 15px;">📖 <a href="https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0029104" target="_blank" style="color: #00f2fe; text-decoration: none;">Ahmad S, Mizuguchi K (2011). Partner-Aware Prediction of Interacting Residues in Protein-Protein Complexes from Sequence Data. PLoS ONE 6(12): e29104.</a></div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
@@ -346,7 +351,8 @@ if run_clicked and file1 and file2:
     with st.spinner("Scoring candidate interactions across 24-network ensemble..."):
         try:
             from inference import run_prediction
-            results = run_prediction(lines1, lines2)
+            
+            results = run_prediction(lines1, lines2, models=get_models())
             results = _ensure_dense_matrix(results)
         except Exception as e:
             progress.empty()
@@ -428,8 +434,17 @@ with tab_heat:
 with tab_3d:
     st.markdown("##### 3D Interaction Energy Landscape")
     st.caption("Surface projection of the exact smoothed matrix array.")
-    fig3d = go.Figure(data=[go.Surface(z=results["smoothed_matrix"], x=results["unique_r2"], y=results["unique_r1"], colorscale="viridis")])
-    fig3d.update_layout(height=700, margin=dict(l=0, r=0, t=0, b=0), paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#B9C4D6"), scene=dict(xaxis_title=name2, yaxis_title=name1, zaxis_title="Score"))
+    mat = results["smoothed_matrix"]
+    fig3d = go.Figure(data=[go.Surface(
+        z=mat,
+        colorscale="viridis",
+        hovertemplate="Score: %{z:.4f}<extra></extra>",
+    )])
+    fig3d.update_layout(
+        height=700, margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#B9C4D6"),
+        scene=dict(xaxis_title=f"{name2} (index)", yaxis_title=f"{name1} (index)", zaxis_title="Score"),
+    )
     st.plotly_chart(fig3d, use_container_width=True)
 
 with tab_dist:
