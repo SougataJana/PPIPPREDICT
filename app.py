@@ -524,7 +524,7 @@ if "results" not in st.session_state:
         st.markdown("5. **Visualization Smoothing (app-only):** For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.")
 
     with _card():
-        st.markdown("#### Upload PSSM Profiles"")
+        st.markdown("#### Upload PSSM Profiles")
         col1, col2 = st.columns(2, gap="large")
         with col1:
             file1 = st.file_uploader("**UPLOAD** Protein 1 (Target PSSM)", type=None, key="f1")
