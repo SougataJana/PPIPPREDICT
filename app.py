@@ -9,10 +9,29 @@ import re
 
 import numpy as np
 import pandas as pd
+import plotly
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 from inference import load_models, run_prediction
+
+# ---------------------------------------------------------------------------
+# Shared figure typography
+# ---------------------------------------------------------------------------
+try:
+    _PLOTLY_SUPPORTS_WEIGHT = tuple(int(x) for x in plotly.__version__.split(".")[:2]) >= (5, 23)
+except Exception:
+    _PLOTLY_SUPPORTS_WEIGHT = False
+
+
+def _font(size: int = 14, color: str = "#B9C4D6", bold: bool = True) -> dict:
+    """Plot font spec. `weight` only exists on plotly >= 5.23, so it is added
+    conditionally and bold is carried by <b> tags in titles/annotations."""
+    spec = dict(size=size, color=color, family="Plus Jakarta Sans, sans-serif")
+    if bold and _PLOTLY_SUPPORTS_WEIGHT:
+        spec["weight"] = "bold"
+    return spec
+
 
 @st.cache_resource
 def get_models():
@@ -163,7 +182,7 @@ def _ensure_dense_matrix(results: dict):
 
 def _build_svg(top_200_pairs: list, cutoff: float, label: str,
                name1: str = "Chain 1", name2: str = "Chain 2",
-               font_size: int = 11, min_gap: float = 12.0) -> str:
+               font_size: int = 15, min_gap: float = 17.0) -> str:
     if not top_200_pairs:
         return ""
 
@@ -187,8 +206,8 @@ def _build_svg(top_200_pairs: list, cutoff: float, label: str,
     numres1 = max([p[0] for p in pairs]) + 5
     numres2 = max([p[1] for p in pairs]) + 5
 
-    startx1 = startx2 = 60
-    svglength = 1500
+    startx1 = startx2 = 110
+    svglength = 1480
     starty1 = 175
     svgheight = 240
     starty2 = starty1 + svgheight
@@ -249,25 +268,25 @@ def _build_svg(top_200_pairs: list, cutoff: float, label: str,
 
     # Labels, rotated clear of the axis
     for lab, x in chosen1:
-        out.write(f'<text x="{x:.2f}" y="{starty1 - 8}" transform="rotate(270 {x:.2f} {starty1 - 8})" '
-                  f'font-size="{font_size}" fill="#00f2fe" text-anchor="start">{lab}</text>\n')
+        out.write(f'<text x="{x:.2f}" y="{starty1 - 9}" transform="rotate(270 {x:.2f} {starty1 - 9})" '
+                  f'font-size="{font_size}" font-weight="700" fill="#00f2fe" text-anchor="start">{lab}</text>\n')
     for lab, x in chosen2:
-        out.write(f'<text x="{x:.2f}" y="{starty2 + 8}" transform="rotate(90 {x:.2f} {starty2 + 8})" '
-                  f'font-size="{font_size}" fill="#c084fc" text-anchor="start">{lab}</text>\n')
+        out.write(f'<text x="{x:.2f}" y="{starty2 + 9}" transform="rotate(90 {x:.2f} {starty2 + 9})" '
+                  f'font-size="{font_size}" font-weight="700" fill="#c084fc" text-anchor="start">{lab}</text>\n')
 
     # Chain captions and label-density note
-    out.write(f'<text x="{startx1}" y="24" font-size="13" fill="#B9C4D6">{label}</text>\n')
-    out.write(f'<text x="{endx1}" y="24" font-size="11" fill="#6B7688" text-anchor="end">'
+    out.write(f'<text x="{startx1}" y="28" font-size="17" font-weight="700" fill="#EAF0F7">{label}</text>\n')
+    out.write(f'<text x="{endx1}" y="28" font-size="13" font-weight="600" fill="#8B95A7" text-anchor="end">'
               f'labels shown: {len(chosen1)}/{len(best1)} (top) &#183; {len(chosen2)}/{len(best2)} (bottom)</text>\n')
-    out.write(f'<text x="{startx1 - 8}" y="{starty1 + 4}" font-size="12" fill="#00f2fe" text-anchor="end">{name1}</text>\n')
-    out.write(f'<text x="{startx2 - 8}" y="{starty2 + 4}" font-size="12" fill="#c084fc" text-anchor="end">{name2}</text>\n')
+    out.write(f'<text x="{startx1 - 10}" y="{starty1 + 5}" font-size="16" font-weight="700" fill="#00f2fe" text-anchor="end">{name1}</text>\n')
+    out.write(f'<text x="{startx2 - 10}" y="{starty2 + 5}" font-size="16" font-weight="700" fill="#c084fc" text-anchor="end">{name2}</text>\n')
 
     out.write("</svg>\n")
     return out.getvalue()
 
 def _build_circular_plot(top_200_pairs: list, cutoff: float, name1: str = "Chain 1",
-                         name2: str = "Chain 2", font_size: int = 10,
-                         min_sep_deg: float = 3.5, max_labels: int = 60) -> go.Figure:
+                         name2: str = "Chain 2", font_size: int = 14,
+                         min_sep_deg: float = 4.5, max_labels: int = 60) -> go.Figure:
     pairs = []
     for name, score in top_200_pairs:
         if score > cutoff:
@@ -345,7 +364,7 @@ def _build_circular_plot(top_200_pairs: list, cutoff: float, name1: str = "Chain
             else:
                 textangle, xanchor = -deg + 180, "right"
             fig.add_annotation(
-                x=1.05 * np.cos(a), y=1.05 * np.sin(a), text=lab, showarrow=False,
+                x=1.05 * np.cos(a), y=1.05 * np.sin(a), text=f"<b>{lab}</b>", showarrow=False,
                 textangle=textangle, xanchor=xanchor, yanchor="middle",
                 font=dict(size=font_size, color=colour, family="JetBrains Mono, monospace"),
             )
@@ -354,21 +373,21 @@ def _build_circular_plot(top_200_pairs: list, cutoff: float, name1: str = "Chain
     shown1, total1 = _add_arc_nodes(best1, _angle1, "#00f2fe")
     shown2, total2 = _add_arc_nodes(best2, _angle2, "#c084fc")
 
-    fig.add_annotation(x=0, y=1.42, text=f"<b>{name1}</b>", showarrow=False,
-                       font=dict(size=13, color="#00f2fe"))
-    fig.add_annotation(x=0, y=-1.42, text=f"<b>{name2}</b>", showarrow=False,
-                       font=dict(size=13, color="#c084fc"))
+    fig.add_annotation(x=0, y=1.45, text=f"<b>{name1}</b>", showarrow=False,
+                       font=_font(18, "#00f2fe"))
+    fig.add_annotation(x=0, y=-1.45, text=f"<b>{name2}</b>", showarrow=False,
+                       font=_font(18, "#c084fc"))
     fig.add_annotation(xref="paper", yref="paper", x=1, y=1, xanchor="right", yanchor="top",
                        showarrow=False,
-                       text=f"labels shown: {shown1}/{total1} (top) &#183; {shown2}/{total2} (bottom)",
-                       font=dict(size=11, color="#6B7688"))
+                       text=f"<b>labels shown: {shown1}/{total1} (top) &#183; {shown2}/{total2} (bottom)</b>",
+                       font=_font(13, "#8B95A7"))
 
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        showlegend=False,
-        xaxis=dict(visible=False, range=[-1.60, 1.60]),
-        yaxis=dict(visible=False, range=[-1.60, 1.60], scaleanchor="x", scaleratio=1),
-        margin=dict(l=10, r=10, t=10, b=10), height=680
+        showlegend=False, font=_font(14),
+        xaxis=dict(visible=False, range=[-1.70, 1.70]),
+        yaxis=dict(visible=False, range=[-1.70, 1.70], scaleanchor="x", scaleratio=1),
+        margin=dict(l=10, r=10, t=10, b=10), height=700
     )
     return fig
 
@@ -420,11 +439,11 @@ st.markdown('<p class="hero-sub">Neural engine for Protein-Protein Interaction P
 # ---------------------------------------------------------------------------
 if "results" not in st.session_state:
     with st.container(border=True):
-        st.markdown("#### Scientific Background & Methodology")
+        st.markdown("#### Scientific Background")
         st.markdown("Computational prediction of protein-protein interaction (PPI) interfaces is a fundamental challenge in structural biology. Traditional machine-learning methods are often 'partner-unaware'—they attempt to identify binding sites on a single protein in isolation. This suite is built upon the foundational partner-aware algorithm established by Professor Shandar Ahmad and Kenji Mizuguchi.")
         st.markdown("By evaluating the sequence-derived Position-Specific Scoring Matrices (PSSMs) of both the target and the partner protein simultaneously, the model captures complementary residue pairing. This drastically reduces false-positive predictions, as it explicitly requires the binding partner to possess a compatible interface region.")
         st.markdown("---")
-        st.markdown("##### Pipeline Architecture (Steps)")
+        st.markdown("#### Pipeline Architecture")
         st.markdown("1. **Stage-1 Composition:** Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.")
         st.markdown("2. **Neural Network:** Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.")
         st.markdown("3. **Stage-2 Composition:** The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.")
@@ -432,7 +451,7 @@ if "results" not in st.session_state:
         st.markdown("5. **Visualization Smoothing (app-only):** For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.")
 
     with st.container(border=True):
-        st.markdown("#### Sequence & Profile Ingestion Pipeline")
+        st.markdown("#### Upload PSSM Profiles")
         col1, col2 = st.columns(2, gap="large")
         with col1:
             file1 = st.file_uploader("Protein 1 (Target PSSM)", type=None, key="f1")
@@ -532,14 +551,26 @@ with tab_chain:
         st.markdown(f"**{name1}**")
         c1_df = pd.DataFrame([(r, results["chain1"][r]) for r in results["unique_r1"]], columns=["Residue", "Score"])
         fig1 = go.Figure(go.Scatter(x=c1_df["Residue"], y=c1_df["Score"], mode="lines", line=dict(color="#00f2fe", width=2)))
-        fig1.update_layout(height=350, margin=dict(l=10, r=10, t=10, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#94a3b8"))
+        fig1.update_layout(
+            height=400, margin=dict(l=10, r=10, t=10, b=10),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=_font(14, "#B9C4D6"),
+            xaxis=dict(title=dict(text="<b>Residue</b>", font=_font(15, "#00f2fe")), tickfont=_font(13)),
+            yaxis=dict(title=dict(text="<b>Max score</b>", font=_font(15, "#00f2fe")), tickfont=_font(13)),
+        )
         st.plotly_chart(fig1, use_container_width=True)
 
     with col2:
         st.markdown(f"**{name2}**")
         c2_df = pd.DataFrame([(r, results["chain2"][r]) for r in results["unique_r2"]], columns=["Residue", "Score"])
         fig2 = go.Figure(go.Scatter(x=c2_df["Residue"], y=c2_df["Score"], mode="lines", line=dict(color="#c084fc", width=2)))
-        fig2.update_layout(height=350, margin=dict(l=10, r=10, t=10, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#94a3b8"))
+        fig2.update_layout(
+            height=400, margin=dict(l=10, r=10, t=10, b=10),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+            font=_font(14, "#B9C4D6"),
+            xaxis=dict(title=dict(text="<b>Residue</b>", font=_font(15, "#c084fc")), tickfont=_font(13)),
+            yaxis=dict(title=dict(text="<b>Max score</b>", font=_font(15, "#c084fc")), tickfont=_font(13)),
+        )
         st.plotly_chart(fig2, use_container_width=True)
 
 with tab_heat:
@@ -548,9 +579,14 @@ with tab_heat:
     fig = go.Figure(data=go.Heatmap(
         z=mat, x=results["unique_r2"], y=results["unique_r1"],
         colorscale=[[0, "#030712"], [0.25, "#1e1b4b"], [0.5, "#0284c7"], [0.75, "#00f2fe"], [1.0, "#f43f5e"]],
-        colorbar=dict(title="Score", tickfont=dict(color="#B9C4D6")),
+        colorbar=dict(title=dict(text="<b>Score</b>", font=_font(15)), tickfont=_font(13)),
     ))
-    fig.update_layout(height=700, xaxis_title=name2, yaxis_title=name1, margin=dict(l=10, r=10, t=10, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#B9C4D6"))
+    fig.update_layout(
+        height=740, margin=dict(l=10, r=10, t=10, b=10),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=_font(14),
+        xaxis=dict(title=dict(text=f"<b>{name2}</b>", font=_font(16, "#c084fc")), tickfont=_font(12)),
+        yaxis=dict(title=dict(text=f"<b>{name1}</b>", font=_font(16, "#00f2fe")), tickfont=_font(12)),
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 with tab_3d:
@@ -563,9 +599,13 @@ with tab_3d:
         hovertemplate="Score: %{z:.4f}<extra></extra>",
     )])
     fig3d.update_layout(
-        height=700, margin=dict(l=0, r=0, t=0, b=0),
-        paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#B9C4D6"),
-        scene=dict(xaxis_title=f"{name2} (index)", yaxis_title=f"{name1} (index)", zaxis_title="Score"),
+        height=740, margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor="rgba(0,0,0,0)", font=_font(14),
+        scene=dict(
+            xaxis=dict(title=dict(text=f"<b>{name2} (index)</b>", font=_font(15, "#c084fc")), tickfont=_font(12)),
+            yaxis=dict(title=dict(text=f"<b>{name1} (index)</b>", font=_font(15, "#00f2fe")), tickfont=_font(12)),
+            zaxis=dict(title=dict(text="<b>Score</b>", font=_font(15)), tickfont=_font(12)),
+        ),
     )
     st.plotly_chart(fig3d, use_container_width=True)
 
@@ -574,7 +614,12 @@ with tab_dist:
     st.caption("Descriptive distribution of all calculated pair scores, separating interaction signal from background.")
     scores = [s for _, s in results["all_pairs"]]
     fig_hist = go.Figure(data=[go.Histogram(x=scores, nbinsx=100, marker_color="#00f2fe", opacity=0.8)])
-    fig_hist.update_layout(height=450, margin=dict(l=10, r=10, t=30, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#B9C4D6"), xaxis_title="Interaction Score", yaxis_title="Frequency Count")
+    fig_hist.update_layout(
+        height=500, margin=dict(l=10, r=10, t=30, b=10),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=_font(14),
+        xaxis=dict(title=dict(text="<b>Interaction Score</b>", font=_font(16)), tickfont=_font(13)),
+        yaxis=dict(title=dict(text="<b>Frequency Count</b>", font=_font(16)), tickfont=_font(13)),
+    )
     st.plotly_chart(fig_hist, use_container_width=True)
 
 with tab_diagram:
@@ -582,10 +627,10 @@ with tab_diagram:
     st.caption("Top 200 pairs, drawn on the same geometry as the legacy get-svg.sh. Every contacting residue gets a tick on its axis; text labels are deduplicated and thinned so they never sit on top of each other, with the highest-scoring residues keeping their label.")
     lc1, lc2 = st.columns(2)
     with lc1:
-        gap = st.slider("Minimum label spacing (px)", 8, 40, 12, 1,
+        gap = st.slider("Minimum label spacing (px)", 10, 50, 17, 1,
                         help="Raise this to thin out labels in crowded regions. Ticks stay for every residue.")
     with lc2:
-        fsize = st.slider("Label font size", 8, 16, 11, 1)
+        fsize = st.slider("Label font size", 10, 26, 15, 1)
     svg_str = _build_svg(results["top_200"], results["cutoff_score"], f"{name1}-{name2}",
                          name1=name1, name2=name2, font_size=fsize, min_gap=float(gap))
     st.components.v1.html(svg_str, height=620, scrolling=True)
@@ -597,10 +642,10 @@ with tab_circ:
     st.caption("Polar coordinate projection of the Top 200 interaction pairs. Data and cutoffs map 1:1 with the linear contact diagram. Every contacting residue is a node on its arc; labels radiate outward and are thinned by angular separation so they don't collide, with the highest-scoring residues keeping their text. Hover any node or chord for the full identity and score.")
     cc1, cc2 = st.columns(2)
     with cc1:
-        sep = st.slider("Minimum label separation (degrees)", 1.0, 12.0, 3.5, 0.5,
+        sep = st.slider("Minimum label separation (degrees)", 1.0, 15.0, 4.5, 0.5,
                         help="Raise this to thin out labels on crowded arcs. Nodes stay for every residue.")
     with cc2:
-        cfsize = st.slider("Label font size ", 8, 16, 10, 1)
+        cfsize = st.slider("Label font size ", 10, 26, 14, 1)
     fig_circ = _build_circular_plot(results["top_200"], results["cutoff_score"],
                                     name1=name1, name2=name2,
                                     font_size=cfsize, min_sep_deg=float(sep))
