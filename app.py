@@ -1037,9 +1037,9 @@ with tab_downloads:
                            use_container_width=True)
 
     with dc3:
-        st.download_button("Target profile (.chain1)", files[f"{stem}-sspred.chain1"],
+        st.download_button("Predicted score for target protein (.chain1)", files[f"{stem}-sspred.chain1"],
                            file_name=f"{stem}-sspred.chain1", use_container_width=True)
-        st.download_button("Partner profile (.chain2)", files[f"{stem}-sspred.chain2"],
+        st.download_button("Predicted score for partner protein (.chain2)", files[f"{stem}-sspred.chain2"],
                            file_name=f"{stem}-sspred.chain2", use_container_width=True)
 
     _gap("1.2rem")
