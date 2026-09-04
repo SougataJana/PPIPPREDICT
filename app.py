@@ -254,7 +254,9 @@ button[data-baseweb="tab"], button[data-baseweb="tab"] *,
 /* Reset button: fills its column, so its right edge is the column's right edge —
    the same edge as the Runtime tile. Trimmed type and padding so the label fits. */
 div.stButton.st-key-new_pred > button:first-child,
+div.stButton.st-key-new_pred button,
 .st-key-new_pred button {
+  width: 100% !important;
   white-space: nowrap !important;
   font-size: 0.92rem !important;
   padding: 0.75rem 0.6rem !important;
@@ -882,7 +884,12 @@ with hcol:
         f'<p style="font-weight:700; color:#B9C4D6; font-size:1rem; margin:0.15rem 0 0 0;">'
         f'{name1} vs {name2}</p>', unsafe_allow_html=True)
 with rcol:
-    if st.button("Go for New Prediction", key="new_pred"):
+    try:
+        _new_pred = st.button("Go for New Prediction", key="new_pred",
+                              use_container_width=True)
+    except TypeError:  # use_container_width on buttons predates this Streamlit
+        _new_pred = st.button("Go for New Prediction", key="new_pred")
+    if _new_pred:
         for _k in ("results", "name1", "name2", "elapsed", "f1", "f2"):
             st.session_state.pop(_k, None)
         for _k in [k for k in st.session_state if str(k).startswith("exports::")]:
@@ -1082,6 +1089,13 @@ with tab_downloads:
                        files[f"{stem}-sspred.chain2"],
                        f"{stem}-sspred.chain2", "text/plain")
 
+    if any(k.endswith(".png") for k in files):
+        st.caption("The plots below download as PNG images, ready for figures and slides.")
+    else:
+        st.caption("The plots below download as interactive HTML files, which open in any "
+                   "browser with hover and zoom intact. To save a plot as a PNG image instead, "
+                   "open its tab and click the camera icon on the figure.")
+
     _FIG_LABELS = [
         ("2d-heatmap", "2D heatmap"),
         ("3d-landscape", "3D landscape"),
@@ -1101,9 +1115,6 @@ with tab_downloads:
             continue
         with fcols[i % 3]:
             _download_link(f"{label} ({ext})", data, fname, mime)
-
-    if not any(k.endswith(".png") for k in files):
-        st.caption("")
 
 # ---------------------------------------------------------------------------
 # Reference (always rendered at the foot of the page)
