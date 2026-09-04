@@ -242,6 +242,14 @@ button[data-baseweb="tab"], button[data-baseweb="tab"] *,
 .stTabs [data-baseweb="tab"] span { font-size: 0.98rem !important; }
 .stTabs [aria-selected="true"], .stTabs [aria-selected="true"] * { color: #00f2fe !important; }
 
+/* Result-section description lines: bold, in step with the headings */
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p,
+[data-testid="stCaptionContainer"] div, [data-testid="stCaptionContainer"] span {
+  font-weight: 700 !important;
+  color: #B9C4D6 !important;
+  font-size: 0.97rem !important;
+}
+
 /* Reset button: fills its column, so its right edge is the column's right edge —
    the same edge as the Runtime tile. Trimmed type and padding so the label fits. */
 div.stButton.st-key-new_pred > button:first-child,
@@ -541,6 +549,17 @@ def _build_circular_plot(top_200_pairs: list, cutoff: float, name1: str = "Chain
     return fig
 
 
+def _plot_config(name: str) -> dict:
+    """Toolbar config so the camera icon saves a high-resolution PNG
+    (client-side, so it works with no kaleido/Chrome on the server)."""
+    return {
+        "displaylogo": False,
+        "toImageButtonOptions": {
+            "format": "png", "filename": name, "width": 1600, "height": 1000, "scale": 3,
+        },
+    }
+
+
 CARD_BOX = (
     "background: linear-gradient(180deg, rgba(15,23,42,0.93) 0%, rgba(15,23,42,0.72) 100%);"
     "border: 1px solid rgba(0,242,254,0.22); border-top: 3px solid #00f2fe;"
@@ -700,9 +719,15 @@ def _write_legacy_files(results: dict, name1: str, name2: str,
     files[f"{stem}-contact-map.svg"] = _build_svg(
         results["top_200"], results["cutoff_score"], stem, name1=name1, name2=name2).encode()
 
-    # 8. Interactive figures as self-contained HTML (plotly.js pulled from CDN,
-    #    so each file stays small)
+    # 8. Figures as static PNG via kaleido. If kaleido is not installed the
+    #    render raises, and the figure falls back to self-contained HTML.
     for label, fig_obj in (figures or {}).items():
+        try:
+            files[f"{stem}-{label}.png"] = fig_obj.to_image(
+                format="png", width=1600, height=1000, scale=2)
+            continue
+        except Exception:
+            pass
         try:
             files[f"{stem}-{label}.html"] = fig_obj.to_html(
                 include_plotlyjs="cdn", full_html=True).encode()
@@ -723,7 +748,7 @@ def _write_legacy_files(results: dict, name1: str, name2: str,
 # Header
 # ---------------------------------------------------------------------------
 st.markdown('<h1 class="hero-title">PPIP<span>P Explorer</span></h1>', unsafe_allow_html=True)
-st.markdown('<p class="hero-sub">Artificial Neural Network  for Protein-Protein Interaction from Partner-aware Prediction.</p>', unsafe_allow_html=True)
+st.markdown('<p class="hero-sub">Artificial Neural Network engine for Protein-Protein Interaction from Partner-aware Prediction.</p>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Landing view: methodology first, then ingestion. Replaced entirely by the
@@ -737,7 +762,7 @@ if "results" not in st.session_state:
              <p style="{CARD_TEXT}">This partner-aware strategy has broad potential applications in disease research and drug development, particularly for investigating disease-associated protein interactions and identifying functionally relevant interfaces that may serve as therapeutic targets. By enabling more precise characterization of PPI interfaces, the server can support the discovery and development of selective PPI modulators and facilitate structure-guided therapeutic design.</p>
              <hr style="border:none; border-top:1px solid rgba(255,255,255,0.12); margin:1.5rem 0;">
              <h4 style="{CARD_HEAD}">Pipeline Architecture</h4>
-             <ol style="{CARD_TEXT} padding-left:1.3rem; margin-bottom:0;"><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Stage-1 Composition:</b> Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Neural Networks:</b> Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Stage-2 Composition:</b> The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Final Ranking:</b> Pair-wise scores are ranked directly (unsmoothed) to select the top 200 candidate interactions, following Ahmad &amp; Mizuguchi (2011).</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Visualization Smoothing (app-only):</b> For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.</li></ol>
+             <ol style="{CARD_TEXT} padding-left:1.3rem; margin-bottom:0;"><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Stage-1 Composition:</b> Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Neural Network:</b> Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Stage-2 Composition:</b> The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Final Ranking:</b> Pair-wise scores are ranked directly (unsmoothed) to select the top 200 candidate interactions, following Ahmad &amp; Mizuguchi (2011).</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Visualization Smoothing (app-only):</b> For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.</li></ol>
            </div>''',
         unsafe_allow_html=True)
 
@@ -748,9 +773,9 @@ if "results" not in st.session_state:
     with _card(key="upload_card"):
         col1, col2 = st.columns(2, gap="large")
         with col1:
-            file1 = st.file_uploader(" Protein 1 (Target PSSM)", type=None, key="f1")
+            file1 = st.file_uploader("**UPLOAD** Protein 1 (Target PSSM)", type=None, key="f1")
         with col2:
-            file2 = st.file_uploader(" Protein 2 (Partner PSSM)", type=None, key="f2")
+            file2 = st.file_uploader("**UPLOAD** Protein 2 (Partner PSSM)", type=None, key="f2")
 
         st.markdown("<br>", unsafe_allow_html=True)
         run_clicked = st.button("Execute Interaction Prediction Pipeline", type="primary", disabled=not (file1 and file2))
@@ -801,6 +826,7 @@ results = st.session_state["results"]
 name1 = st.session_state["name1"]
 name2 = st.session_state["name2"]
 elapsed = st.session_state["elapsed"]
+stem_name = f"{name1}-{name2}"
 
 # ---------------------------------------------------------------------------
 # Results Metrics
@@ -817,6 +843,8 @@ with hcol:
 with rcol:
     if st.button("Go for New Prediction", key="new_pred"):
         for _k in ("results", "name1", "name2", "elapsed", "f1", "f2"):
+            st.session_state.pop(_k, None)
+        for _k in [k for k in st.session_state if str(k).startswith("exports::")]:
             st.session_state.pop(_k, None)
         st.rerun()
 
@@ -843,11 +871,14 @@ tab_top, tab_chain, tab_heat, tab_3d, tab_dist, tab_diagram, tab_circ, tab_downl
 ])
 
 with tab_top:
-    st.markdown("##### Top 200 Candidate Residue Pairs")
     st.markdown(
-        '<p style="color:#94a3b8; font-size:0.97rem; margin:0.35rem 0 1.1rem 0;">'
-        'Maximum score may highlight the specific interaction.</p>', unsafe_allow_html=True)
-    tcol, _spacer = st.columns([3, 2])
+        '<h5 style="text-align:center; margin-bottom:0;">Top 200 Candidate Residue Pairs</h5>',
+        unsafe_allow_html=True)
+    st.markdown(
+        '<p style="color:#B9C4D6; font-weight:700; font-size:0.97rem; text-align:center; '
+        'margin:0.4rem 0 1.2rem 0;">Maximum score may highlight the specific interaction.</p>',
+        unsafe_allow_html=True)
+    _lsp, tcol, _rsp = st.columns([1, 3, 1])
     with tcol:
         st.markdown(_hotspot_table_html(results["top_200"]), unsafe_allow_html=True)
 
@@ -868,7 +899,7 @@ with tab_chain:
             yaxis=dict(title=dict(text="<b>Max score</b>", font=_font(15, "#00f2fe")), tickfont=_font(13)),
         )
         FIGS["propensity-target"] = fig1
-        st.plotly_chart(fig1, use_container_width=True)
+        st.plotly_chart(fig1, use_container_width=True, config=_plot_config(f"{stem_name}-propensity-target"))
 
     with col2:
         st.markdown(f"**{name2}**")
@@ -882,10 +913,11 @@ with tab_chain:
             yaxis=dict(title=dict(text="<b>Max score</b>", font=_font(15, "#c084fc")), tickfont=_font(13)),
         )
         FIGS["propensity-partner"] = fig2
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, use_container_width=True, config=_plot_config(f"{stem_name}-propensity-partner"))
 
 with tab_heat:
     st.markdown("##### Smoothed Interaction Score Matrix")
+    st.caption("All possible residue pairs with their predicted score for a protein-protein complex. Hover the mouse at any rectangle to see the details.")
     mat = results["smoothed_matrix"]
     fig = go.Figure(data=go.Heatmap(
         z=mat, x=results["unique_r2"], y=results["unique_r1"],
@@ -899,7 +931,7 @@ with tab_heat:
         yaxis=dict(title=dict(text=f"<b>{name1}</b>", font=_font(16, "#00f2fe")), tickfont=_font(12)),
     )
     FIGS["2d-heatmap"] = fig
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, config=_plot_config(f"{stem_name}-2d-heatmap"))
 
 with tab_3d:
     st.markdown("##### 3D Interaction Energy Landscape")
@@ -920,7 +952,7 @@ with tab_3d:
         ),
     )
     FIGS["3d-landscape"] = fig3d
-    st.plotly_chart(fig3d, use_container_width=True)
+    st.plotly_chart(fig3d, use_container_width=True, config=_plot_config(f"{stem_name}-3d-landscape"))
 
 with tab_dist:
     st.markdown("##### Score Distribution Histogram")
@@ -934,7 +966,7 @@ with tab_dist:
         yaxis=dict(title=dict(text="<b>Frequency Count</b>", font=_font(16)), tickfont=_font(13)),
     )
     FIGS["score-distribution"] = fig_hist
-    st.plotly_chart(fig_hist, use_container_width=True)
+    st.plotly_chart(fig_hist, use_container_width=True, config=_plot_config(f"{stem_name}-score-distribution"))
 
 with tab_diagram:
     st.markdown("##### Bipartite Interaction Wiring Diagram")
@@ -951,7 +983,7 @@ with tab_diagram:
 
 with tab_circ:
     st.markdown("##### Circular Contact Map")
-    st.caption("Polar coordinate projection of the Top 200 interaction pairs. Data and cutoffs map 1:1 with the linear contact diagram. Every contacting residue is a node on its arc; labels radiate outward and are thinned by angular separation so they don't collide, with the highest-scoring residues keeping their text. Hover any node or chord for the full identity and score.")
+    st.caption("Polar coordinate projection of Top 200 residue pairs. Every contacting residue is a node on its arc. Hover any node or chord for the full identity and score.")
     cc1, cc2 = st.columns(2)
     with cc1:
         sep = st.slider("Minimum label separation (degrees)", 1.0, 15.0, 4.5, 0.5,
@@ -962,17 +994,21 @@ with tab_circ:
                                     name1=name1, name2=name2,
                                     font_size=cfsize, min_sep_deg=float(sep))
     FIGS["circular-contact-map"] = fig_circ
-    st.plotly_chart(fig_circ, use_container_width=True)
+    st.plotly_chart(fig_circ, use_container_width=True, config=_plot_config(f"{stem_name}-circular-contact-map"))
 
 with tab_downloads:
     st.markdown("##### Export Result Files")
     st.markdown(
         '<p style="color:#94a3b8; font-size:0.97rem; margin:0.35rem 0 1.1rem 0;">'
-        'Every result shown in this session, as tab-separated tables plus the vector diagram. '
-        'The archive contains all of them.</p>', unsafe_allow_html=True)
+        'Every result (tab-separated tables and figures) is shown in this section.</p>', unsafe_allow_html=True)
 
-    files = _write_legacy_files(results, name1, name2, elapsed, figures=FIGS)
     stem = f"{name1}-{name2}"
+    _export_key = f"exports::{stem}"
+    if _export_key not in st.session_state:
+        with st.spinner("Rendering export files..."):
+            st.session_state[_export_key] = _write_legacy_files(
+                results, name1, name2, elapsed, figures=FIGS)
+    files = st.session_state[_export_key]
 
     st.download_button(f"Download everything ({stem}-all-results.zip)",
                        files[f"{stem}-all-results.zip"],
@@ -984,17 +1020,17 @@ with tab_downloads:
     dc1, dc2, dc3 = st.columns(3)
 
     with dc1:
-        st.download_button("All scored pairs (.txt)", files[f"{stem}-final-prediction.txt"],
+        st.download_button("Predicted score for all residue pairs (.txt)", files[f"{stem}-final-prediction.txt"],
                            file_name=f"{stem}-final-prediction.txt", use_container_width=True)
-        st.download_button("Top 200 residue pairs (.tsv)", files[f"{stem}-top200.tsv"],
+        st.download_button("Predicted score for top 200 residue pairs (.tsv)", files[f"{stem}-top200.tsv"],
                            file_name=f"{stem}-top200.tsv", use_container_width=True)
         st.download_button("Run summary (.tsv)", files[f"{stem}-summary.tsv"],
                            file_name=f"{stem}-summary.tsv", use_container_width=True)
 
     with dc2:
-        st.download_button("Residue propensities (.tsv)", files[f"{stem}-residue-propensities.tsv"],
+        st.download_button("Residue wise Propensities (.tsv)", files[f"{stem}-residue-propensities.tsv"],
                            file_name=f"{stem}-residue-propensities.tsv", use_container_width=True)
-        st.download_button("Score matrix (.tsv)", files[f"{stem}-score-matrix.tsv"],
+        st.download_button("Residue pair score matrix (.tsv)", files[f"{stem}-score-matrix.tsv"],
                            file_name=f"{stem}-score-matrix.tsv", use_container_width=True)
         st.download_button("Linear contact map (.svg)", files[f"{stem}-contact-map.svg"],
                            file_name=f"{stem}-contact-map.svg", mime="image/svg+xml",
@@ -1008,27 +1044,33 @@ with tab_downloads:
 
     _gap("1.2rem")
     st.markdown("##### Figures")
-    st.markdown(
-        '<p style="color:#94a3b8; font-size:0.97rem; margin:0.35rem 0 1.1rem 0;">'
-        'Interactive HTML copies of each plot, openable in any browser with hover and zoom intact. '
-        'For a static PNG instead, use the camera icon on any figure above.</p>',
-        unsafe_allow_html=True)
+    st.caption("Static images of each plot, ready for figures and slides.")
 
     _FIG_LABELS = [
-        ("2d-heatmap", "2D heatmap (.html)"),
-        ("3d-landscape", "3D landscape (.html)"),
-        ("circular-contact-map", "Circular contact map (.html)"),
-        ("score-distribution", "Score distribution (.html)"),
-        ("propensity-target", "Target propensity plot (.html)"),
-        ("propensity-partner", "Partner propensity plot (.html)"),
+        ("2d-heatmap", "2D heatmap"),
+        ("3d-landscape", "3D landscape"),
+        ("circular-contact-map", "Circular contact map"),
+        ("score-distribution", "Score distribution"),
+        ("propensity-target", "Target protein propensity plot"),
+        ("propensity-partner", "Partner protein propensity plot"),
     ]
     fcols = st.columns(3)
     for i, (slug, label) in enumerate(_FIG_LABELS):
-        keyname = f"{stem}-{slug}.html"
-        if keyname in files:
-            with fcols[i % 3]:
-                st.download_button(label, files[keyname], file_name=keyname,
-                                   mime="text/html", use_container_width=True)
+        png_name, html_name = f"{stem}-{slug}.png", f"{stem}-{slug}.html"
+        if png_name in files:
+            fname, data, mime, ext = png_name, files[png_name], "image/png", ".png"
+        elif html_name in files:
+            fname, data, mime, ext = html_name, files[html_name], "text/html", ".html"
+        else:
+            continue
+        with fcols[i % 3]:
+            st.download_button(f"{label} ({ext})", data, file_name=fname,
+                               mime=mime, use_container_width=True)
+
+    if not any(k.endswith(".png") for k in files):
+        st.caption("Server-side PNG rendering is unavailable here, so these download as "
+                   "interactive HTML. For a PNG of any plot, use the camera icon on the "
+                   "figure itself — it saves a high-resolution image directly.")
 
 # ---------------------------------------------------------------------------
 # Reference (always rendered at the foot of the page)
