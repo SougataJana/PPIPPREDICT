@@ -4,6 +4,7 @@ Strictly validated against Ahmad & Mizuguchi (2011).
 """
 
 import io
+import os
 import time
 import re
 
@@ -63,6 +64,9 @@ html, body, [class*="css"] { font-family: 'Plus Jakarta Sans', sans-serif; }
 
 #MainMenu, footer, header { visibility: hidden; }
 
+/* Pull the whole page up under the hidden Streamlit header */
+.block-container { padding-top: 1.2rem !important; }
+
 h1, h2, h3, h4 {
   font-family: 'Plus Jakarta Sans', sans-serif !important;
   letter-spacing: -0.01em;
@@ -73,7 +77,7 @@ p, li, span, label, .stMarkdown { color: #94a3b8; }
 
 ::selection { background: rgba(0,242,254,0.35); }
 
-.hero-title { font-size: 5.8rem; margin: 0 0 0.6rem 0; line-height: 1.05; font-weight: 800; }
+.hero-title { font-size: 3.1rem; margin: 0 0 0.6rem 0; line-height: 1.05; font-weight: 800; }
 .hero-title span { background: linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #7928ca 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .hero-sub { font-size: 1.08rem; color: #94a3b8; max-width: 800px; line-height: 1.55; margin-bottom: 2rem; }
 
@@ -133,6 +137,32 @@ div.stButton > button:first-child:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 25px rgba(0, 242, 254, 0.6) !important;
   filter: brightness(1.05);
+}
+
+/* File Exports: bold, bright download buttons */
+div.stDownloadButton > button, [data-testid="stDownloadButton"] button {
+  background: rgba(15, 23, 42, 0.9) !important;
+  border: 1.5px solid rgba(0, 242, 254, 0.55) !important;
+  border-radius: 12px !important;
+  padding: 0.7rem 1.1rem !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 12px rgba(0,0,0,0.35) !important;
+  transition: all 0.18s ease !important;
+}
+div.stDownloadButton > button p, [data-testid="stDownloadButton"] button p,
+div.stDownloadButton > button div, [data-testid="stDownloadButton"] button div,
+div.stDownloadButton > button span, [data-testid="stDownloadButton"] button span {
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  font-size: 1.02rem !important;
+  letter-spacing: 0.01em !important;
+}
+div.stDownloadButton > button:hover, [data-testid="stDownloadButton"] button:hover {
+  border-color: #00f2fe !important;
+  background: rgba(0, 242, 254, 0.12) !important;
+  transform: translateY(-1px);
+}
+div.stDownloadButton > button:hover p, [data-testid="stDownloadButton"] button:hover p {
+  color: #00f2fe !important;
 }
 
 [data-testid="stFileUploaderDropzone"] {
@@ -430,8 +460,15 @@ def _write_legacy_files(results: dict, name1: str, name2: str) -> dict[str, byte
 # ---------------------------------------------------------------------------
 # Header
 # ---------------------------------------------------------------------------
-st.markdown('<h1 class="hero-title">PPIP<span>P Explorer</span></h1>', unsafe_allow_html=True)
-st.markdown('<p class="hero-sub">Neural engine for Protein-Protein Interaction Prediction. Score every residue pair with a 24-network SNNS ensemble.</p>', unsafe_allow_html=True)
+LOGO_PATH = "sciwhylab_logo.png"
+
+_logo_col, _title_col = st.columns([1, 7])
+with _logo_col:
+    if os.path.exists(LOGO_PATH):
+        st.image(LOGO_PATH, width=150)
+with _title_col:
+    st.markdown('<h1 class="hero-title">PPI<span>P Explorer</span></h1>', unsafe_allow_html=True)
+    st.markdown('<p class="hero-sub">Neural engine for Protein-Protein Interaction Prediction. Score every residue pair with a 24-network SNNS ensemble.</p>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Landing view: methodology first, then ingestion. Replaced entirely by the
@@ -439,11 +476,11 @@ st.markdown('<p class="hero-sub">Neural engine for Protein-Protein Interaction P
 # ---------------------------------------------------------------------------
 if "results" not in st.session_state:
     with st.container(border=True):
-        st.markdown("#### Scientific Background")
+        st.markdown("#### Scientific Background & Methodology")
         st.markdown("Computational prediction of protein-protein interaction (PPI) interfaces is a fundamental challenge in structural biology. Traditional machine-learning methods are often 'partner-unaware'—they attempt to identify binding sites on a single protein in isolation. This suite is built upon the foundational partner-aware algorithm established by Professor Shandar Ahmad and Kenji Mizuguchi.")
         st.markdown("By evaluating the sequence-derived Position-Specific Scoring Matrices (PSSMs) of both the target and the partner protein simultaneously, the model captures complementary residue pairing. This drastically reduces false-positive predictions, as it explicitly requires the binding partner to possess a compatible interface region.")
         st.markdown("---")
-        st.markdown("#### Pipeline Architecture")
+        st.markdown("##### Pipeline Architecture (Steps)")
         st.markdown("1. **Stage-1 Composition:** Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.")
         st.markdown("2. **Neural Network:** Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.")
         st.markdown("3. **Stage-2 Composition:** The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.")
@@ -451,7 +488,7 @@ if "results" not in st.session_state:
         st.markdown("5. **Visualization Smoothing (app-only):** For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.")
 
     with st.container(border=True):
-        st.markdown("#### Upload PSSM Profiles")
+        st.markdown("#### Sequence & Profile Ingestion Pipeline")
         col1, col2 = st.columns(2, gap="large")
         with col1:
             file1 = st.file_uploader("Protein 1 (Target PSSM)", type=None, key="f1")
