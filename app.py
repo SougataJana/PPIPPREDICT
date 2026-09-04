@@ -1,5 +1,5 @@
 """
-PPIP Explorer — Streamlit Enterprise Suite for Protein-Protein Interaction Prediction
+PPIPP Explorer — Streamlit Enterprise Suite for Protein-Protein Interaction Prediction
 Strictly validated against Ahmad & Mizuguchi (2011).
 """
 
@@ -19,7 +19,7 @@ def get_models():
     return load_models("ppip_ensemble_weights.pt")
 
 st.set_page_config(
-    page_title="PPIP Explorer | Structural Biology Suite",
+    page_title="PPIPP Explorer | Structural Biology Suite",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
