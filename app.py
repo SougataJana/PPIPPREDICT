@@ -595,7 +595,7 @@ def _write_legacy_files(results: dict, name1: str, name2: str) -> dict[str, byte
 # Header
 # ---------------------------------------------------------------------------
 st.markdown('<h1 class="hero-title">PPIP<span>P Explorer</span></h1>', unsafe_allow_html=True)
-st.markdown('<p class="hero-sub">Artificial Neural Network engine for Protein-Protein Interaction from Partner-aware Prediction.</p>', unsafe_allow_html=True)
+st.markdown('<p class="hero-sub">Artificial Neural Network  for Protein-Protein Interaction from Partner-aware Prediction.</p>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Landing view: methodology first, then ingestion. Replaced entirely by the
