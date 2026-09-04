@@ -110,8 +110,9 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.card-tag) h4 {
   margin-bottom: 0.9rem !important;
 }
 div[data-testid="stVerticalBlockBorderWrapper"]:has(.card-tag) h5 {
-  color: #f8fafc !important;
-  font-size: 1.12rem !important;
+  color: #00f2fe !important;
+  font-size: 1.25rem !important;
+  margin-top: 0.4rem !important;
 }
 
 /* Uploader: bold, dark text in the white browse box */
@@ -512,9 +513,8 @@ st.markdown('<p class="hero-sub">Neural engine for Protein-Protein Interaction P
 # ---------------------------------------------------------------------------
 if "results" not in st.session_state:
     with _card():
-        st.markdown("#### Scientific Background & Methodology")
-        st.markdown("Computational prediction of protein-protein interaction (PPI) interfaces is a fundamental challenge in structural biology. Traditional machine-learning methods are often 'partner-unaware'—they attempt to identify binding sites on a single protein in isolation. This suite is built upon the foundational partner-aware algorithm established by Professor Shandar Ahmad and Kenji Mizuguchi.")
-        st.markdown("By evaluating the sequence-derived Position-Specific Scoring Matrices (PSSMs) of both the target and the partner protein simultaneously, the model captures complementary residue pairing. This drastically reduces false-positive predictions, as it explicitly requires the binding partner to possess a compatible interface region.")
+        st.markdown("Computational prediction of protein–protein interaction (PPI) interfaces remains a significant challenge in systems and structural biology. Conventional machine-learning approaches are often partner-unaware, predicting potential binding sites on individual proteins without considering their specific interaction partners. This web server implements a partner-aware approach developed by Professor Shandar Ahmad and Kenji Mizuguchi. The method simultaneously analyzes sequence-derived Position-Specific Scoring Matrices (PSSMs) from both the target and partner proteins to identify complementary residue-pairing patterns indicative of PPI interfaces. By explicitly incorporating information from both interacting proteins, the approach substantially reduces false-positive predictions and improves the specificity of interface identification, as a binding site is predicted only when the corresponding partner contains a compatible interface region.")
+        st.markdown("This partner-aware strategy has broad potential applications in disease research and drug development, particularly for investigating disease-associated protein interactions and identifying functionally relevant interfaces that may serve as therapeutic targets. By enabling more precise characterization of PPI interfaces, the server can support the discovery and development of selective PPI modulators and facilitate structure-guided therapeutic design.")
         st.markdown("---")
         st.markdown("##### Pipeline Architecture (Steps)")
         st.markdown("1. **Stage-1 Composition:** Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.")
