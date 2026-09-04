@@ -221,22 +221,9 @@ button[data-baseweb="tab"], button[data-baseweb="tab"] *,
 .stTabs [data-baseweb="tab"] span { font-size: 0.98rem !important; }
 .stTabs [aria-selected="true"], .stTabs [aria-selected="true"] * { color: #00f2fe !important; }
 
-/* Reset button: hug the right edge instead of filling its column */
-div.stButton.st-key-new_pred, .st-key-new_pred {
-  display: flex !important;
-  justify-content: flex-end !important;
-}
-div.stButton.st-key-new_pred, .st-key-new_pred {
-  padding-right: 0 !important;
-  margin-right: -0.75rem !important;   /* tune this to sit flush with the Runtime tile */
-}
-div.stButton.st-key-new_pred > button:first-child,
-.st-key-new_pred button {
-  width: auto !important;
-  min-width: 0 !important;
-  white-space: nowrap !important;
-  margin-right: 0 !important;
-}
+/* Reset button: fills its (narrow) column, so its right edge is the column's
+   right edge — the same edge as the Runtime tile. No nudging needed. */
+.st-key-new_pred button { white-space: nowrap !important; }
 
 /* File Exports: bold, bright download buttons */
 div.stDownloadButton > button, [data-testid="stDownloadButton"] button {
@@ -605,7 +592,8 @@ def _render_reference():
         st.markdown('<div style="background: rgba(0, 242, 254, 0.05); border: 1px solid rgba(0, 242, 254, 0.2); padding: 15px; border-radius: 8px;">📖 <a href="https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0029104" target="_blank" style="color: #00f2fe; text-decoration: none;">Ahmad S, Mizuguchi K (2011). Partner-Aware Prediction of Interacting Residues in Protein-Protein Complexes from Sequence Data. PLoS ONE 6(12): e29104.</a></div>', unsafe_allow_html=True)
 
 def _write_legacy_files(results: dict, name1: str, name2: str,
-                        elapsed: float | None = None) -> dict[str, bytes]:
+                        elapsed: float | None = None,
+                        figures: dict | None = None) -> dict[str, bytes]:
     """Every result the app shows, as downloadable files. Buffers are written
     and released one at a time to keep peak memory low."""
     files = {}
@@ -679,7 +667,16 @@ def _write_legacy_files(results: dict, name1: str, name2: str,
     files[f"{stem}-contact-map.svg"] = _build_svg(
         results["top_200"], results["cutoff_score"], stem, name1=name1, name2=name2).encode()
 
-    # 8. Everything above, zipped
+    # 8. Interactive figures as self-contained HTML (plotly.js pulled from CDN,
+    #    so each file stays small)
+    for label, fig_obj in (figures or {}).items():
+        try:
+            files[f"{stem}-{label}.html"] = fig_obj.to_html(
+                include_plotlyjs="cdn", full_html=True).encode()
+        except Exception:
+            pass
+
+    # 9. Everything above, zipped
     zbuf = io.BytesIO()
     with zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
         for fname, data in files.items():
@@ -776,9 +773,9 @@ elapsed = st.session_state["elapsed"]
 # Results Metrics
 # ---------------------------------------------------------------------------
 try:
-    hcol, rcol = st.columns([3, 1], vertical_alignment="center")
+    hcol, rcol = st.columns([4, 1], vertical_alignment="center")
 except TypeError:  # vertical_alignment lands in Streamlit 1.36
-    hcol, rcol = st.columns([3, 1])
+    hcol, rcol = st.columns([4, 1])
 with hcol:
     st.markdown("### Executed Results")
     st.markdown(
@@ -805,6 +802,8 @@ _gap("1.6rem")
 # ---------------------------------------------------------------------------
 # Strict Authentic Tabs
 # ---------------------------------------------------------------------------
+FIGS: dict = {}
+
 tab_top, tab_chain, tab_heat, tab_3d, tab_dist, tab_diagram, tab_circ, tab_downloads = st.tabs([
     "Interacting Residue Pairs", "Residue wise Propensities", "2D Heatmap", "3D Landscape", 
     "Score Distribution", "Linear Contact Map", "Circular Contact Map", "Export Result Files"
@@ -835,6 +834,7 @@ with tab_chain:
             xaxis=dict(title=dict(text="<b>Residue</b>", font=_font(15, "#00f2fe")), tickfont=_font(13)),
             yaxis=dict(title=dict(text="<b>Max score</b>", font=_font(15, "#00f2fe")), tickfont=_font(13)),
         )
+        FIGS["propensity-target"] = fig1
         st.plotly_chart(fig1, use_container_width=True)
 
     with col2:
@@ -848,6 +848,7 @@ with tab_chain:
             xaxis=dict(title=dict(text="<b>Residue</b>", font=_font(15, "#c084fc")), tickfont=_font(13)),
             yaxis=dict(title=dict(text="<b>Max score</b>", font=_font(15, "#c084fc")), tickfont=_font(13)),
         )
+        FIGS["propensity-partner"] = fig2
         st.plotly_chart(fig2, use_container_width=True)
 
 with tab_heat:
@@ -864,6 +865,7 @@ with tab_heat:
         xaxis=dict(title=dict(text=f"<b>{name2}</b>", font=_font(16, "#c084fc")), tickfont=_font(12)),
         yaxis=dict(title=dict(text=f"<b>{name1}</b>", font=_font(16, "#00f2fe")), tickfont=_font(12)),
     )
+    FIGS["2d-heatmap"] = fig
     st.plotly_chart(fig, use_container_width=True)
 
 with tab_3d:
@@ -884,6 +886,7 @@ with tab_3d:
             zaxis=dict(title=dict(text="<b>Score</b>", font=_font(15)), tickfont=_font(12)),
         ),
     )
+    FIGS["3d-landscape"] = fig3d
     st.plotly_chart(fig3d, use_container_width=True)
 
 with tab_dist:
@@ -897,6 +900,7 @@ with tab_dist:
         xaxis=dict(title=dict(text="<b>Interaction Score</b>", font=_font(16)), tickfont=_font(13)),
         yaxis=dict(title=dict(text="<b>Frequency Count</b>", font=_font(16)), tickfont=_font(13)),
     )
+    FIGS["score-distribution"] = fig_hist
     st.plotly_chart(fig_hist, use_container_width=True)
 
 with tab_diagram:
@@ -924,6 +928,7 @@ with tab_circ:
     fig_circ = _build_circular_plot(results["top_200"], results["cutoff_score"],
                                     name1=name1, name2=name2,
                                     font_size=cfsize, min_sep_deg=float(sep))
+    FIGS["circular-contact-map"] = fig_circ
     st.plotly_chart(fig_circ, use_container_width=True)
 
 with tab_downloads:
@@ -933,7 +938,7 @@ with tab_downloads:
         'Every result shown in this session, as tab-separated tables plus the vector diagram. '
         'The archive contains all of them.</p>', unsafe_allow_html=True)
 
-    files = _write_legacy_files(results, name1, name2, elapsed)
+    files = _write_legacy_files(results, name1, name2, elapsed, figures=FIGS)
     stem = f"{name1}-{name2}"
 
     st.download_button(f"Download everything ({stem}-all-results.zip)",
@@ -967,6 +972,30 @@ with tab_downloads:
                            file_name=f"{stem}-sspred.chain1", use_container_width=True)
         st.download_button("Partner profile (.chain2)", files[f"{stem}-sspred.chain2"],
                            file_name=f"{stem}-sspred.chain2", use_container_width=True)
+
+    _gap("1.2rem")
+    st.markdown("##### Figures")
+    st.markdown(
+        '<p style="color:#94a3b8; font-size:0.97rem; margin:0.35rem 0 1.1rem 0;">'
+        'Interactive HTML copies of each plot, openable in any browser with hover and zoom intact. '
+        'For a static PNG instead, use the camera icon on any figure above.</p>',
+        unsafe_allow_html=True)
+
+    _FIG_LABELS = [
+        ("2d-heatmap", "2D heatmap (.html)"),
+        ("3d-landscape", "3D landscape (.html)"),
+        ("circular-contact-map", "Circular contact map (.html)"),
+        ("score-distribution", "Score distribution (.html)"),
+        ("propensity-target", "Target propensity plot (.html)"),
+        ("propensity-partner", "Partner propensity plot (.html)"),
+    ]
+    fcols = st.columns(3)
+    for i, (slug, label) in enumerate(_FIG_LABELS):
+        keyname = f"{stem}-{slug}.html"
+        if keyname in files:
+            with fcols[i % 3]:
+                st.download_button(label, files[keyname], file_name=keyname,
+                                   mime="text/html", use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Reference (always rendered at the foot of the page)
