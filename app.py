@@ -266,7 +266,8 @@ def _build_svg(top_200_pairs: list, cutoff: float, label: str,
     return out.getvalue()
 
 def _build_circular_plot(top_200_pairs: list, cutoff: float, name1: str = "Chain 1",
-                         name2: str = "Chain 2", max_labels: int = 40) -> go.Figure:
+                         name2: str = "Chain 2", font_size: int = 10,
+                         min_sep_deg: float = 3.5, max_labels: int = 60) -> go.Figure:
     pairs = []
     for name, score in top_200_pairs:
         if score > cutoff:
@@ -317,7 +318,7 @@ def _build_circular_plot(top_200_pairs: list, cutoff: float, name1: str = "Chain
         if r2 not in best2 or score > best2[r2][1]:
             best2[r2] = (p2, score)
 
-    def _add_arc_nodes(best, angle_fn, colour, label_out, ranked_labels):
+    def _add_arc_nodes(best, angle_fn, colour):
         labels = list(best.keys())
         ang = np.array([angle_fn(best[l][0]) for l in labels])
         fig.add_trace(go.Scatter(
@@ -326,33 +327,48 @@ def _build_circular_plot(top_200_pairs: list, cutoff: float, name1: str = "Chain
             hoverinfo="text",
             text=[f"{l} (best score: {best[l][1]:.4f})" for l in labels],
         ))
-        shown = [l for l in labels if l in ranked_labels]
-        if shown:
-            ang_s = np.array([angle_fn(best[l][0]) for l in shown])
-            r = 1.09
-            fig.add_trace(go.Scatter(
-                x=r * np.cos(ang_s), y=r * np.sin(ang_s), mode="text",
-                text=shown, textposition=label_out,
-                textfont=dict(size=10, color=colour, family="JetBrains Mono, monospace"),
-                hoverinfo="skip",
-            ))
 
-    top1 = {l for l, _ in sorted(best1.items(), key=lambda kv: kv[1][1], reverse=True)[:max_labels]}
-    top2 = {l for l, _ in sorted(best2.items(), key=lambda kv: kv[1][1], reverse=True)[:max_labels]}
-    _add_arc_nodes(best1, _angle1, "#00f2fe", "top center", top1)
-    _add_arc_nodes(best2, _angle2, "#c084fc", "bottom center", top2)
+        # Highest-scoring residues claim the space; anything angularly closer
+        # than min_sep keeps its node but drops its text.
+        min_sep = np.radians(min_sep_deg)
+        placed: list[float] = []
+        for lab, (pos, score) in sorted(best.items(), key=lambda kv: kv[1][1], reverse=True):
+            if len(placed) >= max_labels:
+                break
+            a = angle_fn(pos)
+            if any(abs(a - pa) < min_sep for pa in placed):
+                continue
+            placed.append(a)
+            deg = np.degrees(a)
+            if np.cos(a) >= 0:
+                textangle, xanchor = -deg, "left"
+            else:
+                textangle, xanchor = -deg + 180, "right"
+            fig.add_annotation(
+                x=1.05 * np.cos(a), y=1.05 * np.sin(a), text=lab, showarrow=False,
+                textangle=textangle, xanchor=xanchor, yanchor="middle",
+                font=dict(size=font_size, color=colour, family="JetBrains Mono, monospace"),
+            )
+        return len(placed), len(best)
 
-    fig.add_annotation(x=0, y=1.30, text=f"<b>{name1}</b>", showarrow=False,
+    shown1, total1 = _add_arc_nodes(best1, _angle1, "#00f2fe")
+    shown2, total2 = _add_arc_nodes(best2, _angle2, "#c084fc")
+
+    fig.add_annotation(x=0, y=1.42, text=f"<b>{name1}</b>", showarrow=False,
                        font=dict(size=13, color="#00f2fe"))
-    fig.add_annotation(x=0, y=-1.30, text=f"<b>{name2}</b>", showarrow=False,
+    fig.add_annotation(x=0, y=-1.42, text=f"<b>{name2}</b>", showarrow=False,
                        font=dict(size=13, color="#c084fc"))
+    fig.add_annotation(xref="paper", yref="paper", x=1, y=1, xanchor="right", yanchor="top",
+                       showarrow=False,
+                       text=f"labels shown: {shown1}/{total1} (top) &#183; {shown2}/{total2} (bottom)",
+                       font=dict(size=11, color="#6B7688"))
 
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
-        xaxis=dict(visible=False, range=[-1.45, 1.45]),
-        yaxis=dict(visible=False, range=[-1.45, 1.45], scaleanchor="x", scaleratio=1),
-        margin=dict(l=10, r=10, t=10, b=10), height=620
+        xaxis=dict(visible=False, range=[-1.60, 1.60]),
+        yaxis=dict(visible=False, range=[-1.60, 1.60], scaleanchor="x", scaleratio=1),
+        margin=dict(l=10, r=10, t=10, b=10), height=680
     )
     return fig
 
@@ -563,8 +579,16 @@ with tab_diagram:
 
 with tab_circ:
     st.markdown("##### Circular Contact Map")
-    st.caption("Polar coordinate projection of the Top 200 interaction pairs. Data and cutoffs map 1:1 with the linear contact diagram. Residue nodes are marked on both arcs; the 40 highest-scoring residues per chain are labelled, and every node and chord reports its identity and score on hover.")
-    fig_circ = _build_circular_plot(results["top_200"], results["cutoff_score"], name1=name1, name2=name2)
+    st.caption("Polar coordinate projection of the Top 200 interaction pairs. Data and cutoffs map 1:1 with the linear contact diagram. Every contacting residue is a node on its arc; labels radiate outward and are thinned by angular separation so they don't collide, with the highest-scoring residues keeping their text. Hover any node or chord for the full identity and score.")
+    cc1, cc2 = st.columns(2)
+    with cc1:
+        sep = st.slider("Minimum label separation (degrees)", 1.0, 12.0, 3.5, 0.5,
+                        help="Raise this to thin out labels on crowded arcs. Nodes stay for every residue.")
+    with cc2:
+        cfsize = st.slider("Label font size ", 8, 16, 10, 1)
+    fig_circ = _build_circular_plot(results["top_200"], results["cutoff_score"],
+                                    name1=name1, name2=name2,
+                                    font_size=cfsize, min_sep_deg=float(sep))
     st.plotly_chart(fig_circ, use_container_width=True)
 
 with tab_downloads:
