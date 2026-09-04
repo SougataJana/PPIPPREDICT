@@ -97,6 +97,20 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
   box-shadow: 0 18px 45px -12px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
 }
 
+/* Card chrome, matched to the intro box. Several selectors so at least one
+   hits whichever DOM this Streamlit build produces. */
+.st-key-upload_card,
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.card-tag),
+div[data-testid="stVerticalBlock"]:has(> div > div > .card-tag) {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.93) 0%, rgba(15, 23, 42, 0.72) 100%) !important;
+  border: 1px solid rgba(0, 242, 254, 0.22) !important;
+  border-top: 3px solid #00f2fe !important;
+  border-radius: 20px !important;
+  padding: 1.7rem 1.9rem !important;
+  margin-bottom: 1.6rem !important;
+  box-shadow: 0 18px 45px -12px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+}
+
 /* Tagged cards: methodology + ingestion */
 .card-tag { display: none; }
 .stMarkdown:has(> div > .card-tag), .stMarkdown:has(.card-tag) { display: none !important; }
@@ -470,7 +484,8 @@ CARD_BOX = (
     "border-radius: 20px; padding: 1.7rem 1.9rem; margin-bottom: 1.6rem;"
     "box-shadow: 0 18px 45px -12px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.07);"
 )
-CARD_TEXT = "color:#B9C4D6; font-size:1.02rem; line-height:1.68; margin-bottom:1rem;"
+CARD_TEXT = ("color:#B9C4D6; font-size:1.02rem; line-height:1.68; margin-bottom:1rem;"
+             " text-align:justify; text-justify:inter-word;")
 CARD_HEAD = "color:#00f2fe !important; font-size:1.35rem; font-weight:700; margin:0 0 1rem 0;"
 
 
@@ -520,9 +535,13 @@ table.hs tr:hover td { background: rgba(0,242,254,0.07); }
 <tbody>""" + "".join(rows) + "</tbody></table></div>"
 
 
-def _card():
-    """Bordered container carrying an invisible marker the CSS keys off."""
-    box = st.container(border=True)
+def _card(key: str | None = None):
+    """Bordered container. `key` (Streamlit >= 1.39) puts a st-key-<key> class on
+    the wrapper; the marker span is a fallback hook for older builds."""
+    try:
+        box = st.container(border=True, key=key) if key else st.container(border=True)
+    except TypeError:  # container(key=...) predates this Streamlit
+        box = st.container(border=True)
     with box:
         st.markdown('<span class="card-tag"></span>', unsafe_allow_html=True)
     return box
@@ -585,7 +604,7 @@ if "results" not in st.session_state:
            </div>''',
         unsafe_allow_html=True)
 
-    with _card():
+    with _card(key="upload_card"):
         st.markdown("#### Upload PSSM Profiles")
         col1, col2 = st.columns(2, gap="large")
         with col1:
