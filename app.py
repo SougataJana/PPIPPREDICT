@@ -136,12 +136,33 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.card-tag) h5 {
   margin-top: 0.4rem !important;
 }
 
-/* Uploader: bold, dark text in the white browse box */
+/* Uploader "Browse files": explicitly a white box with bold dark text.
+   Both background and colour are set here — setting only the colour left the
+   text invisible on builds where this button renders transparent. */
+[data-testid="stFileUploaderDropzone"] button,
+[data-testid="stFileUploaderDropzone"] [data-testid="stBaseButton-secondary"] {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  border: 1px solid #ffffff !important;
+  border-radius: 10px !important;
+  padding: 0.55rem 1.1rem !important;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.35) !important;
+}
 [data-testid="stFileUploaderDropzone"] button,
 [data-testid="stFileUploaderDropzone"] button p,
 [data-testid="stFileUploaderDropzone"] button span,
 [data-testid="stFileUploaderDropzone"] button div {
   font-weight: 800 !important;
+  color: #030712 !important;
+}
+[data-testid="stFileUploaderDropzone"] button:hover {
+  background: #E2E8F0 !important;
+  background-color: #E2E8F0 !important;
+  border-color: #E2E8F0 !important;
+}
+[data-testid="stFileUploaderDropzone"] button:hover p,
+[data-testid="stFileUploaderDropzone"] button:hover span,
+[data-testid="stFileUploaderDropzone"] button:hover div {
   color: #030712 !important;
 }
 [data-testid="stFileUploader"] label p {
@@ -221,9 +242,21 @@ button[data-baseweb="tab"], button[data-baseweb="tab"] *,
 .stTabs [data-baseweb="tab"] span { font-size: 0.98rem !important; }
 .stTabs [aria-selected="true"], .stTabs [aria-selected="true"] * { color: #00f2fe !important; }
 
-/* Reset button: fills its (narrow) column, so its right edge is the column's
-   right edge — the same edge as the Runtime tile. No nudging needed. */
-.st-key-new_pred button { white-space: nowrap !important; }
+/* Reset button: fills its column, so its right edge is the column's right edge —
+   the same edge as the Runtime tile. Trimmed type and padding so the label fits. */
+div.stButton.st-key-new_pred > button:first-child,
+.st-key-new_pred button {
+  white-space: nowrap !important;
+  font-size: 0.92rem !important;
+  padding: 0.75rem 0.6rem !important;
+  letter-spacing: 0 !important;
+}
+div.stButton.st-key-new_pred > button:first-child p,
+.st-key-new_pred button p {
+  font-size: 0.92rem !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+}
 
 /* File Exports: bold, bright download buttons */
 div.stDownloadButton > button, [data-testid="stDownloadButton"] button {
@@ -690,7 +723,7 @@ def _write_legacy_files(results: dict, name1: str, name2: str,
 # Header
 # ---------------------------------------------------------------------------
 st.markdown('<h1 class="hero-title">PPIP<span>P Explorer</span></h1>', unsafe_allow_html=True)
-st.markdown('<p class="hero-sub">Artificial Neural Network engine for Protein-Protein Interaction from Partner-aware Prediction.</p>', unsafe_allow_html=True)
+st.markdown('<p class="hero-sub">Artificial Neural Network  for Protein-Protein Interaction from Partner-aware Prediction.</p>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Landing view: methodology first, then ingestion. Replaced entirely by the
@@ -704,7 +737,7 @@ if "results" not in st.session_state:
              <p style="{CARD_TEXT}">This partner-aware strategy has broad potential applications in disease research and drug development, particularly for investigating disease-associated protein interactions and identifying functionally relevant interfaces that may serve as therapeutic targets. By enabling more precise characterization of PPI interfaces, the server can support the discovery and development of selective PPI modulators and facilitate structure-guided therapeutic design.</p>
              <hr style="border:none; border-top:1px solid rgba(255,255,255,0.12); margin:1.5rem 0;">
              <h4 style="{CARD_HEAD}">Pipeline Architecture</h4>
-             <ol style="{CARD_TEXT} padding-left:1.3rem; margin-bottom:0;"><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Stage-1 Composition:</b> Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Neural Network:</b> Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Stage-2 Composition:</b> The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Final Ranking:</b> Pair-wise scores are ranked directly (unsmoothed) to select the top 200 candidate interactions, following Ahmad &amp; Mizuguchi (2011).</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Visualization Smoothing (app-only):</b> For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.</li></ol>
+             <ol style="{CARD_TEXT} padding-left:1.3rem; margin-bottom:0;"><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Stage-1 Composition:</b> Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Neural Networks:</b> Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Stage-2 Composition:</b> The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Final Ranking:</b> Pair-wise scores are ranked directly (unsmoothed) to select the top 200 candidate interactions, following Ahmad &amp; Mizuguchi (2011).</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Visualization Smoothing (app-only):</b> For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.</li></ol>
            </div>''',
         unsafe_allow_html=True)
 
@@ -715,9 +748,9 @@ if "results" not in st.session_state:
     with _card(key="upload_card"):
         col1, col2 = st.columns(2, gap="large")
         with col1:
-            file1 = st.file_uploader("**UPLOAD** Protein 1 (Target PSSM)", type=None, key="f1")
+            file1 = st.file_uploader(" Protein 1 (Target PSSM)", type=None, key="f1")
         with col2:
-            file2 = st.file_uploader("**UPLOAD** Protein 2 (Partner PSSM)", type=None, key="f2")
+            file2 = st.file_uploader(" Protein 2 (Partner PSSM)", type=None, key="f2")
 
         st.markdown("<br>", unsafe_allow_html=True)
         run_clicked = st.button("Execute Interaction Prediction Pipeline", type="primary", disabled=not (file1 and file2))
@@ -773,9 +806,9 @@ elapsed = st.session_state["elapsed"]
 # Results Metrics
 # ---------------------------------------------------------------------------
 try:
-    hcol, rcol = st.columns([4, 1], vertical_alignment="center")
+    hcol, rcol = st.columns([3, 1], vertical_alignment="center")
 except TypeError:  # vertical_alignment lands in Streamlit 1.36
-    hcol, rcol = st.columns([4, 1])
+    hcol, rcol = st.columns([3, 1])
 with hcol:
     st.markdown("### Executed Results")
     st.markdown(
@@ -905,7 +938,7 @@ with tab_dist:
 
 with tab_diagram:
     st.markdown("##### Bipartite Interaction Wiring Diagram")
-    st.caption("Top 200 pairs, drawn on the same geometry as the legacy get-svg.sh. Every contacting residue gets a tick on its axis; text labels are deduplicated and thinned so they never sit on top of each other, with the highest-scoring residues keeping their label.")
+    st.caption("Linear projection of candidate interacting residues from top 200 residue pairs")
     lc1, lc2 = st.columns(2)
     with lc1:
         gap = st.slider("Minimum label spacing (px)", 10, 50, 17, 1,
