@@ -836,7 +836,7 @@ with tab_dist:
 
 with tab_diagram:
     st.markdown("##### Bipartite Interaction Wiring Diagram")
-    st.caption("Top 200 pairs, drawn on the same geometry as the legacy get-svg.sh. Every contacting residue gets a tick on its axis; text labels are deduplicated and thinned so they never sit on top of each other, with the highest-scoring residues keeping their label.")
+    st.caption("Linear projection of candidate interacting residues from top 200 residue pairs")
     lc1, lc2 = st.columns(2)
     with lc1:
         gap = st.slider("Minimum label spacing (px)", 10, 50, 17, 1,
