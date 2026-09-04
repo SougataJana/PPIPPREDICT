@@ -195,6 +195,18 @@ div.stButton > button:first-child:hover {
   filter: brightness(1.05);
 }
 
+/* Reset button: hug the right edge instead of filling its column */
+div.stButton.st-key-new_pred, .st-key-new_pred {
+  display: flex !important;
+  justify-content: flex-end !important;
+}
+div.stButton.st-key-new_pred > button:first-child,
+.st-key-new_pred button {
+  width: auto !important;
+  min-width: 0 !important;
+  white-space: nowrap !important;
+}
+
 /* File Exports: bold, bright download buttons */
 div.stDownloadButton > button, [data-testid="stDownloadButton"] button {
   background: rgba(15, 23, 42, 0.9) !important;
@@ -685,10 +697,12 @@ with hcol:
     st.markdown("### Executed Results")
     st.caption(f"{name1} vs {name2}")
 with rcol:
-    if st.button("Go for New Prediction"):
+    if st.button("Go for New Prediction", key="new_pred"):
         for _k in ("results", "name1", "name2", "elapsed", "f1", "f2"):
             st.session_state.pop(_k, None)
         st.rerun()
+
+_gap("1rem")
 
 top_pair, top_score = results["top_200"][0]
 
@@ -697,6 +711,8 @@ m1.metric("Sequence Geometry", f"{len(results['unique_r1'])} × {len(results['un
 m2.metric("Top 200 Cutoff Score", f"{results['cutoff_score']:.4f}")
 m3.metric("Peak Interaction", f"{top_score:.3f}", top_pair)
 m4.metric("Runtime", f"{elapsed:.2f}s")
+
+_gap("1.6rem")
 
 # ---------------------------------------------------------------------------
 # Strict Authentic Tabs
@@ -838,4 +854,5 @@ with tab_downloads:
 # ---------------------------------------------------------------------------
 # Reference (always rendered at the foot of the page)
 # ---------------------------------------------------------------------------
+_gap("1.6rem")
 _render_reference()
