@@ -474,6 +474,49 @@ CARD_TEXT = "color:#B9C4D6; font-size:1.02rem; line-height:1.68; margin-bottom:1
 CARD_HEAD = "color:#00f2fe !important; font-size:1.35rem; font-weight:700; margin:0 0 1rem 0;"
 
 
+def _hotspot_table_html(pairs: list) -> str:
+    """Ranked hotspots as plain HTML: alignment and colours are fully ours,
+    so Streamlit's table CSS cannot override them and there is no toolbar."""
+    scores = [sc for _, sc in pairs]
+    smin, smax = (min(scores), max(scores)) if scores else (0.0, 1.0)
+    span = (smax - smin) or 1.0
+
+    rows = []
+    for i, (name, score) in enumerate(pairs, 1):
+        pct = 6 + ((score - smin) / span) * 94
+        rows.append(
+            f'<tr><td class="rk">{i}</td><td class="pr">{name}</td>'
+            f'<td class="sc"><span class="bar" style="width:{pct:.1f}%"></span>'
+            f'<span class="val">{score:.6f}</span></td></tr>'
+        )
+
+    return """
+<style>
+.hs-wrap { max-height: 520px; overflow-y: auto; border: 1px solid rgba(0,242,254,0.20);
+           border-radius: 14px; background: rgba(15,23,42,0.75); }
+.hs-wrap::-webkit-scrollbar { width: 10px; }
+.hs-wrap::-webkit-scrollbar-thumb { background: rgba(0,242,254,0.35); border-radius: 8px; }
+table.hs { width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono', monospace; }
+table.hs th { position: sticky; top: 0; z-index: 2; background: #0b1220;
+              color: #00f2fe !important; font-size: 0.95rem; font-weight: 800;
+              padding: 12px 16px; border-bottom: 1px solid rgba(0,242,254,0.28); }
+table.hs td { padding: 9px 16px; font-size: 0.95rem; font-weight: 600;
+              color: #EAF0F7 !important; border-bottom: 1px solid rgba(255,255,255,0.05); }
+table.hs th.rk, table.hs td.rk { text-align: right; width: 70px; color: #7C8798 !important; }
+table.hs th.pr, table.hs td.pr { text-align: left; }
+table.hs td.pr { color: #f8fafc !important; font-weight: 700; }
+table.hs th.sc, table.hs td.sc { text-align: right; width: 46%; }
+table.hs td.sc { position: relative; }
+table.hs td.sc .bar { position: absolute; right: 0; top: 0; bottom: 0;
+                      background: linear-gradient(90deg, rgba(0,242,254,0.04), rgba(0,242,254,0.30)); }
+table.hs td.sc .val { position: relative; color: #ffffff !important; font-weight: 700; }
+table.hs tr:hover td { background: rgba(0,242,254,0.07); }
+</style>
+<div class="hs-wrap"><table class="hs">
+<thead><tr><th class="rk">Rank</th><th class="pr">Pair</th><th class="sc">Score</th></tr></thead>
+<tbody>""" + "".join(rows) + "</tbody></table></div>"
+
+
 def _card():
     """Bordered container carrying an invisible marker the CSS keys off."""
     box = st.container(border=True)
@@ -630,31 +673,9 @@ tab_top, tab_chain, tab_heat, tab_3d, tab_dist, tab_diagram, tab_circ, tab_downl
 
 with tab_top:
     st.markdown("##### Top 200 Candidate Contact Pairs")
-    df = pd.DataFrame(results["top_200"], columns=["Pair", "Score"])
-    df.index = df.index + 1
-    df.index.name = "Rank"
-
-    # st.table renders real HTML, so header and cell alignment can be set
-    # explicitly and there is no dataframe toolbar (no download / search icons).
-    styled = (
-        df.style
-        .background_gradient(subset=["Score"], cmap="GnBu_r")
-        .format({"Score": "{:.6f}"})
-        .set_properties(**{"text-align": "left"})
-        .set_table_styles([
-            {"selector": "th", "props": [("text-align", "left")]},
-            {"selector": "td", "props": [("text-align", "left")]},
-        ])
-    )
-
-    tcol, _spacer = st.columns([1, 1])
+    tcol, _spacer = st.columns([3, 2])
     with tcol:
-        try:
-            scroll_box = st.container(height=520)
-        except TypeError:  # scrollable containers land in Streamlit 1.31
-            scroll_box = st.container()
-        with scroll_box:
-            st.table(styled)
+        st.markdown(_hotspot_table_html(results["top_200"]), unsafe_allow_html=True)
 
 with tab_chain:
     st.markdown("##### Per-Residue Interface Propensity Profiles")
