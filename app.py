@@ -88,13 +88,13 @@ p, li, span, label, .stMarkdown { color: #94a3b8; }
 
 /* Native Streamlit Container Border Styling (Replaces raw HTML ghost cards) */
 div[data-testid="stVerticalBlockBorderWrapper"] {
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  border-radius: 18px !important;
-  background: rgba(15, 23, 42, 0.65) !important;
-  backdrop-filter: blur(20px) saturate(1.6) !important;
-  box-shadow: 0 10px 35px -5px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06) !important;
-  padding: 1rem !important;
-  margin-bottom: 1.5rem !important;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.93) 0%, rgba(15, 23, 42, 0.72) 100%) !important;
+  border: 1px solid rgba(0, 242, 254, 0.22) !important;
+  border-top: 3px solid #00f2fe !important;
+  border-radius: 20px !important;
+  padding: 1.7rem 1.9rem !important;
+  margin-bottom: 1.6rem !important;
+  box-shadow: 0 18px 45px -12px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
 }
 
 /* Tagged cards: methodology + ingestion */
@@ -589,9 +589,9 @@ if "results" not in st.session_state:
         st.markdown("#### Upload PSSM Profiles")
         col1, col2 = st.columns(2, gap="large")
         with col1:
-            file1 = st.file_uploader("**UPLOAD** Protein 1 (Target PSSM)", type=None, key="f1")
+            file1 = st.file_uploader(" Protein 1 (Target PSSM)", type=None, key="f1")
         with col2:
-            file2 = st.file_uploader("**UPLOAD** Protein 2 (Partner PSSM)", type=None, key="f2")
+            file2 = st.file_uploader(" Protein 2 (Partner PSSM)", type=None, key="f2")
 
         st.markdown("<br>", unsafe_allow_html=True)
         run_clicked = st.button("Execute Interaction Prediction Pipeline", type="primary", disabled=not (file1 and file2))
