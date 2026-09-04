@@ -499,9 +499,12 @@ def _hotspot_table_html(pairs: list) -> str:
 table.hs { width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono', monospace; }
 table.hs th { position: sticky; top: 0; z-index: 2; background: #0b1220;
               color: #00f2fe !important; font-size: 0.95rem; font-weight: 800;
-              padding: 12px 16px; border-bottom: 1px solid rgba(0,242,254,0.28); }
+              padding: 12px 16px;
+              border-bottom: 2px solid #01050e; border-right: 1px solid #01050e; }
 table.hs td { padding: 9px 16px; font-size: 0.95rem; font-weight: 600;
-              color: #EAF0F7 !important; border-bottom: 1px solid rgba(255,255,255,0.05); }
+              color: #EAF0F7 !important;
+              border-bottom: 1px solid #01050e; border-right: 1px solid #01050e; }
+table.hs th:last-child, table.hs td:last-child { border-right: none; }
 table.hs th.rk, table.hs td.rk { text-align: right; width: 70px; color: #7C8798 !important; }
 table.hs th.pr, table.hs td.pr { text-align: left; }
 table.hs td.pr { color: #f8fafc !important; font-weight: 700; }
