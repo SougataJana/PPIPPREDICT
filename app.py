@@ -504,8 +504,8 @@ def _write_legacy_files(results: dict, name1: str, name2: str) -> dict[str, byte
 # ---------------------------------------------------------------------------
 # Header
 # ---------------------------------------------------------------------------
-st.markdown('<h1 class="hero-title">PPI<span>P Explorer</span></h1>', unsafe_allow_html=True)
-st.markdown('<p class="hero-sub">Neural engine for Protein-Protein Interaction Prediction. Score every residue pair with a 24-network SNNS ensemble.</p>', unsafe_allow_html=True)
+st.markdown('<h1 class="hero-title">PPIP<span>P Explorer</span></h1>', unsafe_allow_html=True)
+st.markdown('<p class="hero-sub">Artificial Neural Network engine for Protein-Protein Interaction from Partner-aware Prediction.</p>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Landing view: methodology first, then ingestion. Replaced entirely by the
@@ -516,7 +516,7 @@ if "results" not in st.session_state:
         st.markdown("Computational prediction of protein–protein interaction (PPI) interfaces remains a significant challenge in systems and structural biology. Conventional machine-learning approaches are often partner-unaware, predicting potential binding sites on individual proteins without considering their specific interaction partners. This web server implements a partner-aware approach developed by Professor Shandar Ahmad and Kenji Mizuguchi. The method simultaneously analyzes sequence-derived Position-Specific Scoring Matrices (PSSMs) from both the target and partner proteins to identify complementary residue-pairing patterns indicative of PPI interfaces. By explicitly incorporating information from both interacting proteins, the approach substantially reduces false-positive predictions and improves the specificity of interface identification, as a binding site is predicted only when the corresponding partner contains a compatible interface region.")
         st.markdown("This partner-aware strategy has broad potential applications in disease research and drug development, particularly for investigating disease-associated protein interactions and identifying functionally relevant interfaces that may serve as therapeutic targets. By enabling more precise characterization of PPI interfaces, the server can support the discovery and development of selective PPI modulators and facilitate structure-guided therapeutic design.")
         st.markdown("---")
-        st.markdown("##### Pipeline Architecture (Steps)")
+        st.markdown("#### Pipeline Architecture")
         st.markdown("1. **Stage-1 Composition:** Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.")
         st.markdown("2. **Neural Network:** Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.")
         st.markdown("3. **Stage-2 Composition:** The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.")
@@ -524,7 +524,7 @@ if "results" not in st.session_state:
         st.markdown("5. **Visualization Smoothing (app-only):** For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.")
 
     with _card():
-        st.markdown("#### Sequence & Profile Ingestion Pipeline")
+        st.markdown("#### Upload PSSM Profiles"")
         col1, col2 = st.columns(2, gap="large")
         with col1:
             file1 = st.file_uploader("**UPLOAD** Protein 1 (Target PSSM)", type=None, key="f1")
