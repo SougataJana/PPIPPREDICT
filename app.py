@@ -25,7 +25,7 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------------------------
-# Advanced Sci-Fi & Biotech Glassmorphic Styling
+# CSS styling
 # ---------------------------------------------------------------------------
 CSS = """
 <style>
@@ -53,20 +53,6 @@ h1, h2, h3, h4 {
 p, li, span, label, .stMarkdown { color: #94a3b8; }
 
 ::selection { background: rgba(0,242,254,0.35); }
-
-/* Custom HUD Typography */
-.eyebrow {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.82rem;
-  color: #00f2fe;
-  background: rgba(0,242,254,0.08);
-  border: 1px solid rgba(0,242,254,0.25);
-  display: inline-block;
-  padding: 0.3rem 0.7rem;
-  border-radius: 8px;
-  margin-bottom: 1.1rem;
-}
-.eyebrow::before { content: "$ "; color: #6B7688; }
 
 .hero-title { font-size: 3.1rem; margin: 0 0 0.6rem 0; line-height: 1.05; font-weight: 800; }
 .hero-title span { background: linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #7928ca 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
@@ -175,12 +161,16 @@ def _ensure_dense_matrix(results: dict):
         
     return results
 
-def _build_svg(top_200_pairs: list, cutoff: float, label: str) -> str:
+def _build_svg(top_200_pairs: list, cutoff: float, label: str,
+               name1: str = "Chain 1", name2: str = "Chain 2",
+               font_size: int = 11, min_gap: float = 12.0) -> str:
     if not top_200_pairs:
         return ""
-        
+
     pairs = []
     for name, score in top_200_pairs:
+        if score <= cutoff:
+            continue
         clean = name.replace(':', ' ').split()
         if len(clean) >= 2:
             res1, res2 = clean[0], clean[1]
@@ -194,38 +184,89 @@ def _build_svg(top_200_pairs: list, cutoff: float, label: str) -> str:
     if not pairs:
         return ""
 
-    max_p1 = max([p[0] for p in pairs])
-    max_p2 = max([p[1] for p in pairs])
-    
-    numres1 = max_p1 + 5
-    numres2 = max_p2 + 5
+    numres1 = max([p[0] for p in pairs]) + 5
+    numres2 = max([p[1] for p in pairs]) + 5
 
-    startx1, startx2 = 10, 10
-    starty1 = 100
-    svglength, svgheight = 1200, 200
+    startx1 = startx2 = 60
+    svglength = 1500
+    starty1 = 175
+    svgheight = 240
     starty2 = starty1 + svgheight
-    endx1 = startx1 + svglength
-    endx2 = endx1
+    endx1 = endx2 = startx1 + svglength
     endy1, endy2 = starty1, starty2
 
-    out = io.StringIO()
-    out.write(f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 {endx1 + 40} {starty2 + 40}" width="100%" height="100%">\n')
-    out.write(f'<line x1="{startx1}" y1="{starty1}" x2="{endx1}" y2="{endy1}" style="stroke:#006600;"></line>\n')
-    out.write(f'<line x1="{startx2}" y1="{starty2}" x2="{endx2}" y2="{endy2}" style="stroke:#006600;"></line>\n')
-    out.write(f'<text x="10" y="20" font-size="12" fill="#B9C4D6"> {label} </text>\n')
+    def _x1(pos):
+        return startx1 + (pos * svglength / numres1)
 
+    def _x2(pos):
+        return startx2 + (pos * svglength / numres2)
+
+    # Best score per unique residue, so each label is emitted exactly once
+    best1: dict[str, tuple[int, float]] = {}
+    best2: dict[str, tuple[int, float]] = {}
     for p1, p2, res1, res2, score in pairs:
-        if score > cutoff:
-            x1 = startx1 + (p1 * svglength / numres1)
-            x2 = startx2 + (p2 * svglength / numres2)
-            out.write(f'<line x1="{x1}" y1="{starty1}" x2="{x2}" y2="{starty2}" stroke="blue" stroke-width="1"></line>\n')
-            out.write(f'<text x="{x1}" y="{starty1}" transform="translate(0 -5) rotate(270 {x1} {starty1})" font-size="12" fill="#EAF0F7">{res1}</text>\n')
-            out.write(f'<text x="{x2}" y="{starty2}" transform="translate(0 5) rotate(90 {x2} {starty2})" font-size="12" fill="#EAF0F7">{res2}</text>\n')
+        if res1 not in best1 or score > best1[res1][1]:
+            best1[res1] = (p1, score)
+        if res2 not in best2 or score > best2[res2][1]:
+            best2[res2] = (p2, score)
+
+    def _pick_labels(best, x_of):
+        """Highest-scoring residues win the space; anything closer than
+        min_gap to an already-placed label keeps its tick but drops its text."""
+        placed_x: list[float] = []
+        chosen: list[tuple[str, float]] = []
+        for lab, (pos, score) in sorted(best.items(), key=lambda kv: kv[1][1], reverse=True):
+            x = x_of(pos)
+            if all(abs(x - px) >= min_gap for px in placed_x):
+                placed_x.append(x)
+                chosen.append((lab, x))
+        return chosen
+
+    chosen1 = _pick_labels(best1, _x1)
+    chosen2 = _pick_labels(best2, _x2)
+
+    out = io.StringIO()
+    out.write(f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+              f'viewBox="0 0 {endx1 + 60} {starty2 + 175}" width="100%" height="100%" '
+              f'font-family="JetBrains Mono, monospace">\n')
+
+    # Chords first, so labels and ticks sit on top of them
+    for p1, p2, res1, res2, score in pairs:
+        out.write(f'<line x1="{_x1(p1):.2f}" y1="{starty1}" x2="{_x2(p2):.2f}" y2="{starty2}" '
+                  f'stroke="#2563eb" stroke-width="1" stroke-opacity="0.45"></line>\n')
+
+    # Axes
+    out.write(f'<line x1="{startx1}" y1="{starty1}" x2="{endx1}" y2="{endy1}" style="stroke:#006600;stroke-width:2;"></line>\n')
+    out.write(f'<line x1="{startx2}" y1="{starty2}" x2="{endx2}" y2="{endy2}" style="stroke:#006600;stroke-width:2;"></line>\n')
+
+    # Ticks for every contacting residue, including the ones whose text was dropped
+    for lab, (pos, score) in best1.items():
+        x = _x1(pos)
+        out.write(f'<line x1="{x:.2f}" y1="{starty1 - 5}" x2="{x:.2f}" y2="{starty1}" stroke="#00f2fe" stroke-width="1" stroke-opacity="0.75"></line>\n')
+    for lab, (pos, score) in best2.items():
+        x = _x2(pos)
+        out.write(f'<line x1="{x:.2f}" y1="{starty2}" x2="{x:.2f}" y2="{starty2 + 5}" stroke="#c084fc" stroke-width="1" stroke-opacity="0.75"></line>\n')
+
+    # Labels, rotated clear of the axis
+    for lab, x in chosen1:
+        out.write(f'<text x="{x:.2f}" y="{starty1 - 8}" transform="rotate(270 {x:.2f} {starty1 - 8})" '
+                  f'font-size="{font_size}" fill="#00f2fe" text-anchor="start">{lab}</text>\n')
+    for lab, x in chosen2:
+        out.write(f'<text x="{x:.2f}" y="{starty2 + 8}" transform="rotate(90 {x:.2f} {starty2 + 8})" '
+                  f'font-size="{font_size}" fill="#c084fc" text-anchor="start">{lab}</text>\n')
+
+    # Chain captions and label-density note
+    out.write(f'<text x="{startx1}" y="24" font-size="13" fill="#B9C4D6">{label}</text>\n')
+    out.write(f'<text x="{endx1}" y="24" font-size="11" fill="#6B7688" text-anchor="end">'
+              f'labels shown: {len(chosen1)}/{len(best1)} (top) &#183; {len(chosen2)}/{len(best2)} (bottom)</text>\n')
+    out.write(f'<text x="{startx1 - 8}" y="{starty1 + 4}" font-size="12" fill="#00f2fe" text-anchor="end">{name1}</text>\n')
+    out.write(f'<text x="{startx2 - 8}" y="{starty2 + 4}" font-size="12" fill="#c084fc" text-anchor="end">{name2}</text>\n')
 
     out.write("</svg>\n")
     return out.getvalue()
 
-def _build_circular_plot(top_200_pairs: list, cutoff: float) -> go.Figure:
+def _build_circular_plot(top_200_pairs: list, cutoff: float, name1: str = "Chain 1",
+                         name2: str = "Chain 2", max_labels: int = 40) -> go.Figure:
     pairs = []
     for name, score in top_200_pairs:
         if score > cutoff:
@@ -233,7 +274,7 @@ def _build_circular_plot(top_200_pairs: list, cutoff: float) -> go.Figure:
                 r1, r2 = name.split(":")
                 p1 = int(re.search(r"\d+", r1).group())
                 p2 = int(re.search(r"\d+", r2).group())
-                pairs.append((p1, p2, name, score))
+                pairs.append((p1, p2, r1, r2, name, score))
             except Exception:
                 continue
 
@@ -246,30 +287,80 @@ def _build_circular_plot(top_200_pairs: list, cutoff: float) -> go.Figure:
     numres1 = max_p1 + 5
     numres2 = max_p2 + 5
 
+    def _angle1(pos):
+        return (np.pi - 0.2) - (pos / numres1) * (np.pi - 0.4)
+
+    def _angle2(pos):
+        return (np.pi + 0.2) + (pos / numres2) * (np.pi - 0.4)
+
     theta1 = np.linspace(np.pi - 0.2, 0.2, 100)
     theta2 = np.linspace(np.pi + 0.2, 2*np.pi - 0.2, 100)
-    
+
     fig.add_trace(go.Scatter(x=np.cos(theta1), y=np.sin(theta1), mode="lines", line=dict(color="#006600", width=4), hoverinfo="skip"))
     fig.add_trace(go.Scatter(x=np.cos(theta2), y=np.sin(theta2), mode="lines", line=dict(color="#006600", width=4), hoverinfo="skip"))
 
-    for p1, p2, name, score in pairs:
-        a1 = (np.pi - 0.2) - (p1 / numres1) * (np.pi - 0.4)
-        a2 = (np.pi + 0.2) + (p2 / numres2) * (np.pi - 0.4)
-        x1, y1 = np.cos(a1), np.sin(a1)
-        x2, y2 = np.cos(a2), np.sin(a2)
-        
+    # Chords
+    for p1, p2, r1, r2, name, score in pairs:
+        a1, a2 = _angle1(p1), _angle2(p2)
         fig.add_trace(go.Scatter(
-            x=[x1, x2], y=[y1, y2], mode="lines",
+            x=[np.cos(a1), np.cos(a2)], y=[np.sin(a1), np.sin(a2)], mode="lines",
             line=dict(color="rgba(0, 102, 255, 0.4)", width=1),
             hoverinfo="text", text=f"{name} (Score: {score:.4f})"
         ))
 
+    # Residue nodes: keep the best score seen for each residue on either arc
+    best1: dict[str, tuple[int, float]] = {}
+    best2: dict[str, tuple[int, float]] = {}
+    for p1, p2, r1, r2, name, score in pairs:
+        if r1 not in best1 or score > best1[r1][1]:
+            best1[r1] = (p1, score)
+        if r2 not in best2 or score > best2[r2][1]:
+            best2[r2] = (p2, score)
+
+    def _add_arc_nodes(best, angle_fn, colour, label_out, ranked_labels):
+        labels = list(best.keys())
+        ang = np.array([angle_fn(best[l][0]) for l in labels])
+        fig.add_trace(go.Scatter(
+            x=np.cos(ang), y=np.sin(ang), mode="markers",
+            marker=dict(size=6, color=colour, line=dict(width=0)),
+            hoverinfo="text",
+            text=[f"{l} (best score: {best[l][1]:.4f})" for l in labels],
+        ))
+        shown = [l for l in labels if l in ranked_labels]
+        if shown:
+            ang_s = np.array([angle_fn(best[l][0]) for l in shown])
+            r = 1.09
+            fig.add_trace(go.Scatter(
+                x=r * np.cos(ang_s), y=r * np.sin(ang_s), mode="text",
+                text=shown, textposition=label_out,
+                textfont=dict(size=10, color=colour, family="JetBrains Mono, monospace"),
+                hoverinfo="skip",
+            ))
+
+    top1 = {l for l, _ in sorted(best1.items(), key=lambda kv: kv[1][1], reverse=True)[:max_labels]}
+    top2 = {l for l, _ in sorted(best2.items(), key=lambda kv: kv[1][1], reverse=True)[:max_labels]}
+    _add_arc_nodes(best1, _angle1, "#00f2fe", "top center", top1)
+    _add_arc_nodes(best2, _angle2, "#c084fc", "bottom center", top2)
+
+    fig.add_annotation(x=0, y=1.30, text=f"<b>{name1}</b>", showarrow=False,
+                       font=dict(size=13, color="#00f2fe"))
+    fig.add_annotation(x=0, y=-1.30, text=f"<b>{name2}</b>", showarrow=False,
+                       font=dict(size=13, color="#c084fc"))
+
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        showlegend=False, xaxis=dict(visible=False), yaxis=dict(visible=False, scaleanchor="x", scaleratio=1),
-        margin=dict(l=10, r=10, t=10, b=10), height=500
+        showlegend=False,
+        xaxis=dict(visible=False, range=[-1.45, 1.45]),
+        yaxis=dict(visible=False, range=[-1.45, 1.45], scaleanchor="x", scaleratio=1),
+        margin=dict(l=10, r=10, t=10, b=10), height=620
     )
     return fig
+
+
+def _render_reference():
+    with st.container(border=True):
+        st.markdown("#### Reference")
+        st.markdown('<div style="background: rgba(0, 242, 254, 0.05); border: 1px solid rgba(0, 242, 254, 0.2); padding: 15px; border-radius: 8px;">📖 <a href="https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0029104" target="_blank" style="color: #00f2fe; text-decoration: none;">Ahmad S, Mizuguchi K (2011). Partner-Aware Prediction of Interacting Residues in Protein-Protein Complexes from Sequence Data. PLoS ONE 6(12): e29104.</a></div>', unsafe_allow_html=True)
 
 def _write_legacy_files(results: dict, name1: str, name2: str) -> dict[str, bytes]:
     files = {}
@@ -296,7 +387,7 @@ def _write_legacy_files(results: dict, name1: str, name2: str) -> dict[str, byte
         buf.write(f"{res} {score:.6f}\n")
     files[f"{name1}-{name2}-sspred.chain2"] = buf.getvalue().encode()
 
-    svg = _build_svg(results["top_200"], results["cutoff_score"], f"{name1}-{name2}")
+    svg = _build_svg(results["top_200"], results["cutoff_score"], f"{name1}-{name2}", name1=name1, name2=name2)
     files[f"{name1}-{name2}.svg"] = svg.encode()
 
     return files
@@ -304,7 +395,6 @@ def _write_legacy_files(results: dict, name1: str, name2: str) -> dict[str, byte
 # ---------------------------------------------------------------------------
 # Header & Front-Facing Ingestion UI
 # ---------------------------------------------------------------------------
-st.markdown('<div class="eyebrow"> &lt;pssm_1&gt; &lt;pssm_2&gt;</div>', unsafe_allow_html=True)
 st.markdown('<h1 class="hero-title">PPI<span>P Explorer</span></h1>', unsafe_allow_html=True)
 st.markdown('<p class="hero-sub">Neural engine for Protein-Protein Interaction Prediction. Score every residue pair with a 24-network SNNS ensemble.</p>', unsafe_allow_html=True)
 
@@ -328,12 +418,13 @@ if "results" not in st.session_state:
         st.markdown("By evaluating the sequence-derived Position-Specific Scoring Matrices (PSSMs) of both the target and the partner protein simultaneously, the model captures complementary residue pairing. This drastically reduces false-positive predictions, as it explicitly requires the binding partner to possess a compatible interface region.")
         st.markdown("---")
         st.markdown("##### Pipeline Architecture (Steps)")
-        st.markdown("1. **Pattern Extraction:** Slides multiple window sizes (-1 to 3) across sequences, extracting local neighborhood PSSM profiles.")
-        st.markdown("2. **Ensemble Neural Network Scoring:** 24 distinct pre-trained Artificial Neural Networks perform symmetric forward passes to score candidate interactions.")
-        st.markdown("3. **Stage-2 Composition:** The parallel predictions are concatenated column-wise, fusing the 24 independent network outputs.")
+        st.markdown("1. **Stage-1 Composition:** Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.")
+        st.markdown("2. **Neural Network:** Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.")
+        st.markdown("3. **Stage-2 Composition:** The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.")
         st.markdown("4. **Final Ranking:** Pair-wise scores are ranked directly (unsmoothed) to select the top 200 candidate interactions, following Ahmad & Mizuguchi (2011).")
-        st.markdown("5. **Visualization Smoothing (app-only):** For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked pairs above.")
-        st.markdown('<div style="background: rgba(0, 242, 254, 0.05); border: 1px solid rgba(0, 242, 254, 0.2); padding: 15px; border-radius: 8px; margin-top: 15px;">📖 <a href="https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0029104" target="_blank" style="color: #00f2fe; text-decoration: none;">Ahmad S, Mizuguchi K (2011). Partner-Aware Prediction of Interacting Residues in Protein-Protein Complexes from Sequence Data. PLoS ONE 6(12): e29104.</a></div>', unsafe_allow_html=True)
+        st.markdown("5. **Visualization Smoothing (app-only):** For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.")
+
+    _render_reference()
 
 # ---------------------------------------------------------------------------
 # Main Execution Logic
@@ -378,7 +469,7 @@ elapsed = st.session_state["elapsed"]
 # ---------------------------------------------------------------------------
 # Results Metrics
 # ---------------------------------------------------------------------------
-st.markdown("### Execution Results")
+st.markdown("### Executed Results")
 top_pair, top_score = results["top_200"][0]
 
 m1, m2, m3, m4 = st.columns(4)
@@ -457,14 +548,23 @@ with tab_dist:
 
 with tab_diagram:
     st.markdown("##### Bipartite Interaction Wiring Diagram")
-    st.caption("Strict reconstruction of get-svg.sh. Lines drawn identically for the top 200 pairs.")
-    svg_str = _build_svg(results["top_200"], results["cutoff_score"], f"{name1}-{name2}")
-    st.components.v1.html(svg_str, height=450, scrolling=True)
+    st.caption("Top 200 pairs, drawn on the same geometry as the legacy get-svg.sh. Every contacting residue gets a tick on its axis; text labels are deduplicated and thinned so they never sit on top of each other, with the highest-scoring residues keeping their label.")
+    lc1, lc2 = st.columns(2)
+    with lc1:
+        gap = st.slider("Minimum label spacing (px)", 8, 40, 12, 1,
+                        help="Raise this to thin out labels in crowded regions. Ticks stay for every residue.")
+    with lc2:
+        fsize = st.slider("Label font size", 8, 16, 11, 1)
+    svg_str = _build_svg(results["top_200"], results["cutoff_score"], f"{name1}-{name2}",
+                         name1=name1, name2=name2, font_size=fsize, min_gap=float(gap))
+    st.components.v1.html(svg_str, height=620, scrolling=True)
+    st.download_button("Download this diagram (SVG)", svg_str.encode(),
+                       file_name=f"{name1}-{name2}-contact-map.svg", mime="image/svg+xml")
 
 with tab_circ:
     st.markdown("##### Circular Contact Map")
-    st.caption("Polar coordinate projection of the Top 200 interaction pairs. Data and cutoffs map 1:1 with the linear contact diagram.")
-    fig_circ = _build_circular_plot(results["top_200"], results["cutoff_score"])
+    st.caption("Polar coordinate projection of the Top 200 interaction pairs. Data and cutoffs map 1:1 with the linear contact diagram. Residue nodes are marked on both arcs; the 40 highest-scoring residues per chain are labelled, and every node and chord reports its identity and score on hover.")
+    fig_circ = _build_circular_plot(results["top_200"], results["cutoff_score"], name1=name1, name2=name2)
     st.plotly_chart(fig_circ, use_container_width=True)
 
 with tab_downloads:
@@ -482,3 +582,8 @@ with tab_downloads:
         st.download_button("Download .chain1 profile", files[f"{name1}-{name2}-sspred.chain1"], file_name=f"{name1}-{name2}-sspred.chain1", use_container_width=True)
         st.download_button("Download .chain2 profile", files[f"{name1}-{name2}-sspred.chain2"], file_name=f"{name1}-{name2}-sspred.chain2", use_container_width=True)
         st.download_button("Download SVG Diagram", files[f"{name1}-{name2}.svg"], file_name=f"{name1}-{name2}.svg", mime="image/svg+xml", use_container_width=True)
+
+# ---------------------------------------------------------------------------
+# Reference (always rendered at the foot of the page)
+# ---------------------------------------------------------------------------
+_render_reference()
