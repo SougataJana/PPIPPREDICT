@@ -107,7 +107,7 @@ div[data-testid="stVerticalBlock"]:has(> div > div > .card-tag) {
   border-top: 3px solid #00f2fe !important;
   border-radius: 20px !important;
   padding: 1.7rem 1.9rem !important;
-  margin-bottom: 1.6rem !important;
+  margin-bottom: 0 !important;
   box-shadow: 0 18px 45px -12px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
 }
 
@@ -481,7 +481,7 @@ def _build_circular_plot(top_200_pairs: list, cutoff: float, name1: str = "Chain
 CARD_BOX = (
     "background: linear-gradient(180deg, rgba(15,23,42,0.93) 0%, rgba(15,23,42,0.72) 100%);"
     "border: 1px solid rgba(0,242,254,0.22); border-top: 3px solid #00f2fe;"
-    "border-radius: 20px; padding: 1.7rem 1.9rem; margin-bottom: 1.6rem;"
+    "border-radius: 20px; padding: 1.7rem 1.9rem; margin-bottom: 0;"
     "box-shadow: 0 18px 45px -12px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.07);"
 )
 CARD_TEXT = ("color:#B9C4D6; font-size:1.02rem; line-height:1.68; margin-bottom:1rem;"
@@ -533,6 +533,15 @@ table.hs tr:hover td { background: rgba(0,242,254,0.07); }
 <div class="hs-wrap"><table class="hs">
 <thead><tr><th class="rk">Rank</th><th class="pr">Pair</th><th class="sc">Score</th></tr></thead>
 <tbody>""" + "".join(rows) + "</tbody></table></div>"
+
+
+SECTION_GAP = "0.9rem"
+
+
+def _gap(height: str = SECTION_GAP):
+    """One explicit spacer, so every section break is the same height
+    regardless of what margins Streamlit's own containers carry."""
+    st.markdown(f'<div style="height:{height};"></div>', unsafe_allow_html=True)
 
 
 def _card(key: str | None = None):
@@ -600,17 +609,20 @@ if "results" not in st.session_state:
              <p style="{CARD_TEXT}">This partner-aware strategy has broad potential applications in disease research and drug development, particularly for investigating disease-associated protein interactions and identifying functionally relevant interfaces that may serve as therapeutic targets. By enabling more precise characterization of PPI interfaces, the server can support the discovery and development of selective PPI modulators and facilitate structure-guided therapeutic design.</p>
              <hr style="border:none; border-top:1px solid rgba(255,255,255,0.12); margin:1.5rem 0;">
              <h4 style="{CARD_HEAD}">Pipeline Architecture</h4>
-             <ol style="{CARD_TEXT} padding-left:1.3rem; margin-bottom:0;"><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Stage-1 Composition:</b> Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Neural Network:</b> Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Stage-2 Composition:</b> The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Final Ranking:</b> Pair-wise scores are ranked directly (unsmoothed) to select the top 200 candidate interactions, following Ahmad &amp; Mizuguchi (2011).</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Visualization Smoothing (app-only):</b> For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.</li></ol>
+             <ol style="{CARD_TEXT} padding-left:1.3rem; margin-bottom:0;"><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Stage-1 Composition:</b> Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Neural Networks:</b> Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Stage-2 Composition:</b> The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Final Ranking:</b> Pair-wise scores are ranked directly (unsmoothed) to select the top 200 candidate interactions, following Ahmad &amp; Mizuguchi (2011).</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Visualization Smoothing (app-only):</b> For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.</li></ol>
            </div>''',
         unsafe_allow_html=True)
 
-    st.markdown("#### Upload PSSM Profiles")
+    _gap()
+    st.markdown(
+        '<h4 style="color:#00f2fe; font-size:1.35rem; font-weight:700; margin:0 0 0.6rem 0;">'
+        'Upload PSSM Profiles</h4>', unsafe_allow_html=True)
     with _card(key="upload_card"):
         col1, col2 = st.columns(2, gap="large")
         with col1:
-            file1 = st.file_uploader("Protein 1 (Target PSSM)", type=None, key="f1")
+            file1 = st.file_uploader(" Protein 1 (Target PSSM)", type=None, key="f1")
         with col2:
-            file2 = st.file_uploader("Protein 2 (Partner PSSM)", type=None, key="f2")
+            file2 = st.file_uploader(" Protein 2 (Partner PSSM)", type=None, key="f2")
 
         st.markdown("<br>", unsafe_allow_html=True)
         run_clicked = st.button("Execute Interaction Prediction Pipeline", type="primary", disabled=not (file1 and file2))
@@ -650,6 +662,7 @@ if "results" not in st.session_state:
         # Rerun so the landing view is replaced by the results view only
         st.rerun()
 
+    _gap()
     _render_reference()
     st.stop()
 
