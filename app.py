@@ -412,7 +412,7 @@ def _write_legacy_files(results: dict, name1: str, name2: str) -> dict[str, byte
 # Header & Front-Facing Ingestion UI
 # ---------------------------------------------------------------------------
 st.markdown('<h1 class="hero-title">PPI<span>P Explorer</span></h1>', unsafe_allow_html=True)
-st.markdown('<p class="hero-sub">Artificial Neural Network engine for Protein-Protein Interaction from Partner-aware Prediction."</p>', unsafe_allow_html=True)
+st.markdown('<p class="hero-sub">Artificial Neural Network engine for Protein-Protein Interaction from Partner-aware Prediction.</p>', unsafe_allow_html=True)
 
 # Front-facing file uploader using native Streamlit container with border
 with st.container(border=True):
