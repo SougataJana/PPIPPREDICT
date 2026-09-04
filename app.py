@@ -632,17 +632,29 @@ with tab_top:
     st.markdown("##### Top 200 Candidate Contact Pairs")
     df = pd.DataFrame(results["top_200"], columns=["Pair", "Score"])
     df.index = df.index + 1
-    styled = df.style.background_gradient(subset=["Score"], cmap="GnBu_r").format({"Score": "{:.6f}"})
-    st.dataframe(
-        styled,
-        use_container_width=False,
-        width=520,
-        height=520,
-        column_config={
-            "Pair": st.column_config.TextColumn("Pair", width="small"),
-            "Score": st.column_config.NumberColumn("Score", format="%.6f", width="small"),
-        },
+    df.index.name = "Rank"
+
+    # st.table renders real HTML, so header and cell alignment can be set
+    # explicitly and there is no dataframe toolbar (no download / search icons).
+    styled = (
+        df.style
+        .background_gradient(subset=["Score"], cmap="GnBu_r")
+        .format({"Score": "{:.6f}"})
+        .set_properties(**{"text-align": "left"})
+        .set_table_styles([
+            {"selector": "th", "props": [("text-align", "left")]},
+            {"selector": "td", "props": [("text-align", "left")]},
+        ])
     )
+
+    tcol, _spacer = st.columns([1, 1])
+    with tcol:
+        try:
+            scroll_box = st.container(height=520)
+        except TypeError:  # scrollable containers land in Streamlit 1.31
+            scroll_box = st.container()
+        with scroll_box:
+            st.table(styled)
 
 with tab_chain:
     st.markdown("##### Per-Residue Interface Propensity Profiles")
