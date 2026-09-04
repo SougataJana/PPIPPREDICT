@@ -412,7 +412,7 @@ def _write_legacy_files(results: dict, name1: str, name2: str) -> dict[str, byte
 # Header & Front-Facing Ingestion UI
 # ---------------------------------------------------------------------------
 st.markdown('<h1 class="hero-title">PPI<span>P Explorer</span></h1>', unsafe_allow_html=True)
-st.markdown('<p class="hero-sub">Neural engine for Protein-Protein Interaction Prediction. Score every residue pair with a 24-network SNNS ensemble.</p>', unsafe_allow_html=True)
+st.markdown('<p class="hero-sub">Artificial Neural Network engine for Protein-Protein Interaction from Partner-aware Prediction."</p>', unsafe_allow_html=True)
 
 # Front-facing file uploader using native Streamlit container with border
 with st.container(border=True):
@@ -429,7 +429,7 @@ with st.container(border=True):
 # Conditional Methodology Container (Only displays if no results are loaded yet)
 if "results" not in st.session_state:
     with st.container(border=True):
-        st.markdown("#### Scientific Background & Methodology")
+        st.markdown("#### Scientific Background")
         st.markdown("Computational prediction of protein-protein interaction (PPI) interfaces is a fundamental challenge in structural biology. Traditional machine-learning methods are often 'partner-unaware'—they attempt to identify binding sites on a single protein in isolation. This suite is built upon the foundational partner-aware algorithm established by Professor Shandar Ahmad and Kenji Mizuguchi.")
         st.markdown("By evaluating the sequence-derived Position-Specific Scoring Matrices (PSSMs) of both the target and the partner protein simultaneously, the model captures complementary residue pairing. This drastically reduces false-positive predictions, as it explicitly requires the binding partner to possess a compatible interface region.")
         st.markdown("---")
