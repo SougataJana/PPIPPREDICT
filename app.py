@@ -1103,9 +1103,7 @@ with tab_downloads:
             _download_link(f"{label} ({ext})", data, fname, mime)
 
     if not any(k.endswith(".png") for k in files):
-        st.caption("Server-side PNG rendering is unavailable here, so these download as "
-                   "interactive HTML. For a PNG of any plot, use the camera icon on the "
-                   "figure itself — it saves a high-resolution image directly.")
+        st.caption("")
 
 # ---------------------------------------------------------------------------
 # Reference (always rendered at the foot of the page)
