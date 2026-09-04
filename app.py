@@ -1041,9 +1041,7 @@ with tab_circ:
 
 with tab_downloads:
     st.markdown("##### Export Result Files")
-    st.markdown(
-        '<p style="color:#94a3b8; font-size:0.97rem; margin:0.35rem 0 1.1rem 0;">'
-        'Every result (tab-separated tables and figures) is shown in this section.</p>', unsafe_allow_html=True)
+    st.caption("Every result (tab-separated tables and figures) is shown in this section.")
 
     stem = f"{name1}-{name2}"
     _export_key = f"exports::{stem}"
