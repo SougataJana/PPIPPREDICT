@@ -73,7 +73,7 @@ p, li, span, label, .stMarkdown { color: #94a3b8; }
 
 ::selection { background: rgba(0,242,254,0.35); }
 
-.hero-title { font-size: 4.8rem; margin: 0 0 0.6rem 0; line-height: 1.05; font-weight: 800; }
+.hero-title { font-size: 5.8rem; margin: 0 0 0.6rem 0; line-height: 1.05; font-weight: 800; }
 .hero-title span { background: linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #7928ca 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .hero-sub { font-size: 1.08rem; color: #94a3b8; max-width: 800px; line-height: 1.55; margin-bottom: 2rem; }
 
