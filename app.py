@@ -1,5 +1,5 @@
 """
-PPIPP Explorer — Streamlit Enterprise Suite for Protein-Protein Interaction Prediction
+PPIP Explorer — Streamlit Enterprise Suite for Protein-Protein Interaction Prediction
 Strictly validated against Ahmad & Mizuguchi (2011).
 """
 
@@ -19,7 +19,7 @@ def get_models():
     return load_models("ppip_ensemble_weights.pt")
 
 st.set_page_config(
-    page_title="PPIPP Explorer | Structural Biology Suite",
+    page_title="PPIP Explorer | Structural Biology Suite",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -409,74 +409,80 @@ def _write_legacy_files(results: dict, name1: str, name2: str) -> dict[str, byte
     return files
 
 # ---------------------------------------------------------------------------
-# Header & Front-Facing Ingestion UI
+# Header
 # ---------------------------------------------------------------------------
-st.markdown('<h1 class="hero-title">PPIP<span>P Explorer</span></h1>', unsafe_allow_html=True)
-st.markdown('<p class="hero-sub">Artificial Neural Network engine for Protein-Protein Interaction from Partner-aware Prediction.</p>', unsafe_allow_html=True)
+st.markdown('<h1 class="hero-title">PPI<span>P Explorer</span></h1>', unsafe_allow_html=True)
+st.markdown('<p class="hero-sub">Neural engine for Protein-Protein Interaction Prediction. Score every residue pair with a 24-network SNNS ensemble.</p>', unsafe_allow_html=True)
 
-# Front-facing file uploader using native Streamlit container with border
-with st.container(border=True):
-    st.markdown("#### Upload PSSM Profiles")
-    col1, col2 = st.columns(2, gap="large")
-    with col1:
-        file1 = st.file_uploader("Protein 1 (Target PSSM)", type=None, key="f1")
-    with col2:
-        file2 = st.file_uploader("Protein 2 (Partner PSSM)", type=None, key="f2")
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    run_clicked = st.button("Execute Interaction Prediction Pipeline", type="primary", disabled=not (file1 and file2))
-
-# Conditional Methodology Container (Only displays if no results are loaded yet)
+# ---------------------------------------------------------------------------
+# Landing view: methodology first, then ingestion. Replaced entirely by the
+# results view once a prediction has been executed.
+# ---------------------------------------------------------------------------
 if "results" not in st.session_state:
     with st.container(border=True):
-        st.markdown("#### Scientific Background")
-        st.markdown("Computational prediction of protein-protein interaction (PPI) interfaces is a fundamentally challenging task in structural biology. Traditional machine-learning methods are often 'partner-unaware'—they attempt to identify binding sites on a single protein in isolation. This engine is built upon the  partner-aware algorithm established by Professor Shandar Ahmad and Kenji Mizuguchi.")
+        st.markdown("#### Scientific Background & Methodology")
+        st.markdown("Computational prediction of protein-protein interaction (PPI) interfaces is a fundamental challenge in structural biology. Traditional machine-learning methods are often 'partner-unaware'—they attempt to identify binding sites on a single protein in isolation. This suite is built upon the foundational partner-aware algorithm established by Professor Shandar Ahmad and Kenji Mizuguchi.")
         st.markdown("By evaluating the sequence-derived Position-Specific Scoring Matrices (PSSMs) of both the target and the partner protein simultaneously, the model captures complementary residue pairing. This drastically reduces false-positive predictions, as it explicitly requires the binding partner to possess a compatible interface region.")
         st.markdown("---")
-        st.markdown("#### Pipeline Architecture ")
+        st.markdown("##### Pipeline Architecture (Steps)")
         st.markdown("1. **Stage-1 Composition:** Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.")
         st.markdown("2. **Neural Network:** Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.")
         st.markdown("3. **Stage-2 Composition:** The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.")
         st.markdown("4. **Final Ranking:** Pair-wise scores are ranked directly (unsmoothed) to select the top 200 candidate interactions, following Ahmad & Mizuguchi (2011).")
         st.markdown("5. **Visualization Smoothing (app-only):** For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.")
 
+    with st.container(border=True):
+        st.markdown("#### Sequence & Profile Ingestion Pipeline")
+        col1, col2 = st.columns(2, gap="large")
+        with col1:
+            file1 = st.file_uploader("Protein 1 (Target PSSM)", type=None, key="f1")
+        with col2:
+            file2 = st.file_uploader("Protein 2 (Partner PSSM)", type=None, key="f2")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        run_clicked = st.button("Execute Interaction Prediction Pipeline", type="primary", disabled=not (file1 and file2))
+
+    # -----------------------------------------------------------------------
+    # Main Execution Logic
+    # -----------------------------------------------------------------------
+    if run_clicked and file1 and file2:
+        lines1 = _safe_decode(file1)
+        lines2 = _safe_decode(file2)
+
+        progress = st.progress(0.0, text="Initializing tensor batches...")
+
+        def _progress_cb(frac, msg):
+            progress.progress(frac, text=msg)
+
+        t0 = time.time()
+        with st.spinner("Scoring candidate interactions across 24-network ensemble..."):
+            try:
+                from inference import run_prediction
+
+                results = run_prediction(lines1, lines2, models=get_models())
+                results = _ensure_dense_matrix(results)
+            except Exception as e:
+                progress.empty()
+                st.error(f"Prediction failed: {e}")
+                st.stop()
+
+        elapsed = time.time() - t0
+        progress.empty()
+
+        st.session_state["results"] = results
+        st.session_state["name1"] = file1.name
+        st.session_state["name2"] = file2.name
+        st.session_state["elapsed"] = elapsed
+
+        # Rerun so the landing view is replaced by the results view only
+        st.rerun()
+
     _render_reference()
-
-# ---------------------------------------------------------------------------
-# Main Execution Logic
-# ---------------------------------------------------------------------------
-if run_clicked and file1 and file2:
-    lines1 = _safe_decode(file1)
-    lines2 = _safe_decode(file2)
-
-    progress = st.progress(0.0, text="Initializing tensor batches...")
-
-    def _progress_cb(frac, msg):
-        progress.progress(frac, text=msg)
-
-    t0 = time.time()
-    with st.spinner("Scoring candidate interactions across 24-network ensemble..."):
-        try:
-            from inference import run_prediction
-            
-            results = run_prediction(lines1, lines2, models=get_models())
-            results = _ensure_dense_matrix(results)
-        except Exception as e:
-            progress.empty()
-            st.error(f"Prediction failed: {e}")
-            st.stop()
-            
-    elapsed = time.time() - t0
-    progress.empty()
-
-    st.session_state["results"] = results
-    st.session_state["name1"] = file1.name
-    st.session_state["name2"] = file2.name
-    st.session_state["elapsed"] = elapsed
-
-if "results" not in st.session_state:
     st.stop()
 
+# ---------------------------------------------------------------------------
+# Results view
+# ---------------------------------------------------------------------------
 results = st.session_state["results"]
 name1 = st.session_state["name1"]
 name2 = st.session_state["name2"]
@@ -485,7 +491,16 @@ elapsed = st.session_state["elapsed"]
 # ---------------------------------------------------------------------------
 # Results Metrics
 # ---------------------------------------------------------------------------
-st.markdown("### Executed Results")
+hcol, rcol = st.columns([4, 1])
+with hcol:
+    st.markdown("### Executed Results")
+    st.caption(f"{name1} vs {name2}")
+with rcol:
+    if st.button("New prediction"):
+        for _k in ("results", "name1", "name2", "elapsed", "f1", "f2"):
+            st.session_state.pop(_k, None)
+        st.rerun()
+
 top_pair, top_score = results["top_200"][0]
 
 m1, m2, m3, m4 = st.columns(4)
