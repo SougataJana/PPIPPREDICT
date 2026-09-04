@@ -416,7 +416,7 @@ st.markdown('<p class="hero-sub">Artificial Neural Network engine for Protein-Pr
 
 # Front-facing file uploader using native Streamlit container with border
 with st.container(border=True):
-    st.markdown("#### Sequence & Profile Ingestion Pipeline")
+    st.markdown("#### Upload PSSM Profiles"")
     col1, col2 = st.columns(2, gap="large")
     with col1:
         file1 = st.file_uploader("Protein 1 (Target PSSM)", type=None, key="f1")
