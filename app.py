@@ -91,6 +91,42 @@ div[data-testid="stVerticalBlockBorderWrapper"] {
   margin-bottom: 1.5rem !important;
 }
 
+/* Tagged cards: methodology + ingestion */
+.card-tag { display: none; }
+.stMarkdown:has(> div > .card-tag), .stMarkdown:has(.card-tag) { display: none !important; }
+
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.card-tag) {
+  border: 1px solid rgba(0, 242, 254, 0.22) !important;
+  border-top: 3px solid #00f2fe !important;
+  border-radius: 20px !important;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.93) 0%, rgba(15, 23, 42, 0.72) 100%) !important;
+  padding: 1.7rem 1.9rem !important;
+  margin-bottom: 1.9rem !important;
+  box-shadow: 0 18px 45px -12px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.07) !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.card-tag) h4 {
+  color: #00f2fe !important;
+  font-size: 1.35rem !important;
+  margin-bottom: 0.9rem !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.card-tag) h5 {
+  color: #f8fafc !important;
+  font-size: 1.12rem !important;
+}
+
+/* Uploader: bold, dark text in the white browse box */
+[data-testid="stFileUploaderDropzone"] button,
+[data-testid="stFileUploaderDropzone"] button p,
+[data-testid="stFileUploaderDropzone"] button span,
+[data-testid="stFileUploaderDropzone"] button div {
+  font-weight: 800 !important;
+  color: #030712 !important;
+}
+[data-testid="stFileUploader"] label p {
+  font-size: 1.02rem !important;
+  color: #E2E8F0 !important;
+}
+
 /* Metric Glow Tiles */
 [data-testid="stMetric"] {
   background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.005) 100%);
@@ -421,6 +457,14 @@ def _build_circular_plot(top_200_pairs: list, cutoff: float, name1: str = "Chain
     return fig
 
 
+def _card():
+    """Bordered container carrying an invisible marker the CSS keys off."""
+    box = st.container(border=True)
+    with box:
+        st.markdown('<span class="card-tag"></span>', unsafe_allow_html=True)
+    return box
+
+
 def _render_reference():
     with st.container(border=True):
         st.markdown("#### Reference")
@@ -460,32 +504,32 @@ def _write_legacy_files(results: dict, name1: str, name2: str) -> dict[str, byte
 # Header
 # ---------------------------------------------------------------------------
 st.markdown('<h1 class="hero-title">PPI<span>P Explorer</span></h1>', unsafe_allow_html=True)
-st.markdown('<p class="hero-sub">Artificial Neural Network engine for Protein-Protein Interaction from Partner-aware Prediction."</p>', unsafe_allow_html=True)
+st.markdown('<p class="hero-sub">Neural engine for Protein-Protein Interaction Prediction. Score every residue pair with a 24-network SNNS ensemble.</p>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Landing view: methodology first, then ingestion. Replaced entirely by the
 # results view once a prediction has been executed.
 # ---------------------------------------------------------------------------
 if "results" not in st.session_state:
-    with st.container(border=True):
+    with _card():
         st.markdown("#### Scientific Background & Methodology")
         st.markdown("Computational prediction of protein-protein interaction (PPI) interfaces is a fundamental challenge in structural biology. Traditional machine-learning methods are often 'partner-unaware'—they attempt to identify binding sites on a single protein in isolation. This suite is built upon the foundational partner-aware algorithm established by Professor Shandar Ahmad and Kenji Mizuguchi.")
         st.markdown("By evaluating the sequence-derived Position-Specific Scoring Matrices (PSSMs) of both the target and the partner protein simultaneously, the model captures complementary residue pairing. This drastically reduces false-positive predictions, as it explicitly requires the binding partner to possess a compatible interface region.")
         st.markdown("---")
-        st.markdown("#### Pipeline Architecture ")
+        st.markdown("##### Pipeline Architecture (Steps)")
         st.markdown("1. **Stage-1 Composition:** Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.")
         st.markdown("2. **Neural Network:** Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.")
         st.markdown("3. **Stage-2 Composition:** The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.")
         st.markdown("4. **Final Ranking:** Pair-wise scores are ranked directly (unsmoothed) to select the top 200 candidate interactions, following Ahmad & Mizuguchi (2011).")
         st.markdown("5. **Visualization Smoothing (app-only):** For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.")
 
-    with st.container(border=True):
+    with _card():
         st.markdown("#### Sequence & Profile Ingestion Pipeline")
         col1, col2 = st.columns(2, gap="large")
         with col1:
-            file1 = st.file_uploader("Protein 1 (Target PSSM)", type=None, key="f1")
+            file1 = st.file_uploader("**UPLOAD** Protein 1 (Target PSSM)", type=None, key="f1")
         with col2:
-            file2 = st.file_uploader("Protein 2 (Partner PSSM)", type=None, key="f2")
+            file2 = st.file_uploader("**UPLOAD** Protein 2 (Partner PSSM)", type=None, key="f2")
 
         st.markdown("<br>", unsafe_allow_html=True)
         run_clicked = st.button("Execute Interaction Prediction Pipeline", type="primary", disabled=not (file1 and file2))
