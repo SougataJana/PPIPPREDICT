@@ -78,7 +78,13 @@ p, li, span, label, .stMarkdown { color: #94a3b8; }
 
 .hero-title { font-size: 3.1rem; margin: 0 0 0.6rem 0; line-height: 1.05; font-weight: 800; text-align: center; }
 .hero-title span { background: linear-gradient(135deg, #00f2fe 0%, #4facfe 50%, #7928ca 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-.hero-sub { font-size: 1.08rem; color: #94a3b8; max-width: 800px; line-height: 1.55; margin: 0 auto 2rem auto; text-align: center; }
+.hero-sub, [data-testid="stMarkdownContainer"] p.hero-sub {
+  font-size: 1.12rem !important; color: #94a3b8 !important; max-width: 820px !important;
+  line-height: 1.55 !important; text-align: center !important;
+  margin-left: auto !important; margin-right: auto !important;
+  margin-top: 0 !important; margin-bottom: 2rem !important;
+}
+.hero-title, [data-testid="stMarkdownContainer"] h1.hero-title { text-align: center !important; }
 
 /* Native Streamlit Container Border Styling (Replaces raw HTML ghost cards) */
 div[data-testid="stVerticalBlockBorderWrapper"] {
@@ -458,6 +464,16 @@ def _build_circular_plot(top_200_pairs: list, cutoff: float, name1: str = "Chain
     return fig
 
 
+CARD_BOX = (
+    "background: linear-gradient(180deg, rgba(15,23,42,0.93) 0%, rgba(15,23,42,0.72) 100%);"
+    "border: 1px solid rgba(0,242,254,0.22); border-top: 3px solid #00f2fe;"
+    "border-radius: 20px; padding: 1.7rem 1.9rem; margin-bottom: 1.6rem;"
+    "box-shadow: 0 18px 45px -12px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.07);"
+)
+CARD_TEXT = "color:#B9C4D6; font-size:1.02rem; line-height:1.68; margin-bottom:1rem;"
+CARD_HEAD = "color:#00f2fe !important; font-size:1.35rem; font-weight:700; margin:0 0 1rem 0;"
+
+
 def _card():
     """Bordered container carrying an invisible marker the CSS keys off."""
     box = st.container(border=True)
@@ -512,16 +528,21 @@ st.markdown('<p class="hero-sub">Artificial Neural Network engine for Protein-Pr
 # results view once a prediction has been executed.
 # ---------------------------------------------------------------------------
 if "results" not in st.session_state:
-    with _card():
-        st.markdown("Computational prediction of protein–protein interaction (PPI) interfaces remains a significant challenge in systems and structural biology. Conventional machine-learning approaches are often partner-unaware, predicting potential binding sites on individual proteins without considering their specific interaction partners. This web server implements a partner-aware approach developed by Professor Shandar Ahmad and Kenji Mizuguchi. The method simultaneously analyzes sequence-derived Position-Specific Scoring Matrices (PSSMs) from both the target and partner proteins to identify complementary residue-pairing patterns indicative of PPI interfaces. By explicitly incorporating information from both interacting proteins, the approach substantially reduces false-positive predictions and improves the specificity of interface identification, as a binding site is predicted only when the corresponding partner contains a compatible interface region.")
-        st.markdown("This partner-aware strategy has broad potential applications in disease research and drug development, particularly for investigating disease-associated protein interactions and identifying functionally relevant interfaces that may serve as therapeutic targets. By enabling more precise characterization of PPI interfaces, the server can support the discovery and development of selective PPI modulators and facilitate structure-guided therapeutic design.")
-        st.markdown("---")
-        st.markdown("#### Pipeline Architecture")
-        st.markdown("1. **Stage-1 Composition:** Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.")
-        st.markdown("2. **Neural Network:** Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.")
-        st.markdown("3. **Stage-2 Composition:** The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.")
-        st.markdown("4. **Final Ranking:** Pair-wise scores are ranked directly (unsmoothed) to select the top 200 candidate interactions, following Ahmad & Mizuguchi (2011).")
-        st.markdown("5. **Visualization Smoothing (app-only):** For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.")
+    # Background card
+    st.markdown(
+        f'''<div style="{CARD_BOX}">
+             <p style="{CARD_TEXT}">Computational prediction of protein–protein interaction (PPI) interfaces remains a significant challenge in systems and structural biology. Conventional machine-learning approaches are often partner-unaware, predicting potential binding sites on individual proteins without considering their specific interaction partners. This web server implements a partner-aware approach developed by Professor Shandar Ahmad and Kenji Mizuguchi. The method simultaneously analyzes sequence-derived Position-Specific Scoring Matrices (PSSMs) from both the target and partner proteins to identify complementary residue-pairing patterns indicative of PPI interfaces. By explicitly incorporating information from both interacting proteins, the approach substantially reduces false-positive predictions and improves the specificity of interface identification, as a binding site is predicted only when the corresponding partner contains a compatible interface region.</p>
+             <p style="{CARD_TEXT} margin-bottom:0;">This partner-aware strategy has broad potential applications in disease research and drug development, particularly for investigating disease-associated protein interactions and identifying functionally relevant interfaces that may serve as therapeutic targets. By enabling more precise characterization of PPI interfaces, the server can support the discovery and development of selective PPI modulators and facilitate structure-guided therapeutic design.</p>
+           </div>''',
+        unsafe_allow_html=True)
+
+    # Pipeline architecture card
+    st.markdown(
+        f'''<div style="{CARD_BOX}">
+             <h4 style="{CARD_HEAD}">Pipeline Architecture</h4>
+             <ol style="{CARD_TEXT} padding-left:1.3rem; margin-bottom:0;"><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Stage-1 Composition:</b> Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Neural Network:</b> Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Stage-2 Composition:</b> The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Final Ranking:</b> Pair-wise scores are ranked directly (unsmoothed) to select the top 200 candidate interactions, following Ahmad &amp; Mizuguchi (2011).</li><li style="margin-bottom:0.75rem;"><b style="color:#f8fafc;">Visualization Smoothing (app-only):</b> For the heatmap and 3D views only, a moving-average filter is applied for visual clarity. This step is not part of the original published method and has no effect on the ranked target-partner protein pairs mentioned above.</li></ol>
+           </div>''',
+        unsafe_allow_html=True)
 
     with _card():
         st.markdown("#### Upload PSSM Profiles")
