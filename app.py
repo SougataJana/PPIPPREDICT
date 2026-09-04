@@ -203,8 +203,13 @@ div.stButton > button:first-child:hover {
   color: #f8fafc !important; font-weight: 800 !important; font-size: 1.22rem !important;
   letter-spacing: -0.01em !important;
 }
-.stTabs [data-baseweb="tab"] { font-weight: 700 !important; }
-.stTabs [data-baseweb="tab"] p { font-weight: 700 !important; font-size: 0.97rem !important; }
+.stTabs [data-baseweb="tab"] { font-weight: 800 !important; color: #CBD5E1 !important; }
+.stTabs [data-baseweb="tab"] p,
+.stTabs [data-baseweb="tab"] div,
+.stTabs [data-baseweb="tab"] span {
+  font-weight: 800 !important; font-size: 0.98rem !important; color: inherit !important;
+}
+.stTabs [aria-selected="true"] p { color: #00f2fe !important; }
 
 /* Reset button: hug the right edge instead of filling its column */
 div.stButton.st-key-new_pred, .st-key-new_pred {
@@ -711,7 +716,9 @@ except TypeError:  # vertical_alignment lands in Streamlit 1.36
     hcol, rcol = st.columns([3, 1])
 with hcol:
     st.markdown("### Executed Results")
-    st.caption(f"{name1} vs {name2}")
+    st.markdown(
+        f'<p style="font-weight:700; color:#B9C4D6; font-size:1rem; margin:0.15rem 0 0 0;">'
+        f'{name1} vs {name2}</p>', unsafe_allow_html=True)
 with rcol:
     if st.button("Go for New Prediction", key="new_pred"):
         for _k in ("results", "name1", "name2", "elapsed", "f1", "f2"):
@@ -740,13 +747,16 @@ tab_top, tab_chain, tab_heat, tab_3d, tab_dist, tab_diagram, tab_circ, tab_downl
 
 with tab_top:
     st.markdown("##### Top 200 Candidate Residue Pairs")
+    st.markdown(
+        '<p style="color:#94a3b8; font-size:0.97rem; margin:0.35rem 0 1.1rem 0;">'
+        'Maximum score may highlight the specific interaction.</p>', unsafe_allow_html=True)
     tcol, _spacer = st.columns([3, 2])
     with tcol:
         st.markdown(_hotspot_table_html(results["top_200"]), unsafe_allow_html=True)
 
 with tab_chain:
     st.markdown("##### Per-Residue Interface Propensity Profiles")
-    st.caption("Maximum interaction score achieved by each residue against any partner.")
+    st.caption("Maximum interaction score achieved by each residue against any partner protein.")
     col1, col2 = st.columns(2)
 
     with col1:
@@ -813,7 +823,7 @@ with tab_3d:
 
 with tab_dist:
     st.markdown("##### Score Distribution Histogram")
-    st.caption("Descriptive distribution of all calculated pair scores, separating interaction signal from background.")
+    st.caption("Descriptive distribution of scores for all the residue pairs, separating integration signal from backgroun")
     scores = [s for _, s in results["all_pairs"]]
     fig_hist = go.Figure(data=[go.Histogram(x=scores, nbinsx=100, marker_color="#00f2fe", opacity=0.8)])
     fig_hist.update_layout(
