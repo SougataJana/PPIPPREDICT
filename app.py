@@ -3,6 +3,7 @@ PPIP Explorer — Streamlit Enterprise Suite for Protein-Protein Interaction Pre
 Strictly validated against Ahmad & Mizuguchi (2011).
 """
 
+import base64
 import io
 import time
 import re
@@ -265,6 +266,26 @@ div.stButton.st-key-new_pred > button:first-child p,
   white-space: nowrap !important;
   overflow: visible !important;
 }
+
+/* Export links: real <a download> elements carrying the file inline, so they
+   never hit Streamlit's media endpoint (which 404s once a file is dropped). */
+a.dl-link {
+  display: block; width: 100%; box-sizing: border-box;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1.5px solid rgba(0, 242, 254, 0.55);
+  border-radius: 12px;
+  padding: 0.7rem 1.1rem;
+  margin-bottom: 0.6rem;
+  color: #ffffff !important;
+  font-weight: 800; font-size: 1.02rem; text-align: center; text-decoration: none !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 2px 12px rgba(0,0,0,0.35);
+  transition: all 0.18s ease;
+}
+a.dl-link:hover {
+  border-color: #00f2fe; background: rgba(0, 242, 254, 0.12);
+  color: #00f2fe !important; transform: translateY(-1px);
+}
+a.dl-link.wide { margin-bottom: 0; }
 
 /* File Exports: bold, bright download buttons */
 div.stDownloadButton > button, [data-testid="stDownloadButton"] button {
@@ -549,6 +570,26 @@ def _build_circular_plot(top_200_pairs: list, cutoff: float, name1: str = "Chain
     return fig
 
 
+_INLINE_LIMIT = 6_000_000  # bytes; above this, fall back to st.download_button
+
+
+def _download_link(label: str, data: bytes, filename: str,
+                   mime: str = "application/octet-stream", wide: bool = False):
+    """Render a download as an <a download> with the payload inlined as a data
+    URI. Streamlit's own download endpoint drops files between the render and
+    the click (the browser then saves a 14-byte 'File not found'); an inline
+    link has no server round-trip and cannot expire."""
+    if len(data) > _INLINE_LIMIT:
+        st.download_button(label, data, file_name=filename, mime=mime,
+                           use_container_width=True)
+        return
+    b64 = base64.b64encode(data).decode()
+    cls = "dl-link wide" if wide else "dl-link"
+    st.markdown(
+        f'<a class="{cls}" download="{filename}" href="data:{mime};base64,{b64}">{label}</a>',
+        unsafe_allow_html=True)
+
+
 def _plot_config(name: str) -> dict:
     """Toolbar config so the camera icon saves a high-resolution PNG
     (client-side, so it works with no kaleido/Chrome on the server)."""
@@ -748,7 +789,7 @@ def _write_legacy_files(results: dict, name1: str, name2: str,
 # Header
 # ---------------------------------------------------------------------------
 st.markdown('<h1 class="hero-title">PPIP<span>P Explorer</span></h1>', unsafe_allow_html=True)
-st.markdown('<p class="hero-sub">Artificial Neural Network engine for Protein-Protein Interaction from Partner-aware Prediction.</p>', unsafe_allow_html=True)
+st.markdown('<p class="hero-sub">Artificial Neural Network  for Protein-Protein Interaction from Partner-aware Prediction.</p>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # Landing view: methodology first, then ingestion. Replaced entirely by the
@@ -1010,37 +1051,41 @@ with tab_downloads:
                 results, name1, name2, elapsed, figures=FIGS)
     files = st.session_state[_export_key]
 
-    st.download_button(f"Download everything ({stem}-all-results.zip)",
-                       files[f"{stem}-all-results.zip"],
-                       file_name=f"{stem}-all-results.zip", mime="application/zip",
-                       use_container_width=True)
+    _download_link(f"Download everything ({stem}-all-results.zip)",
+                   files[f"{stem}-all-results.zip"],
+                   f"{stem}-all-results.zip", "application/zip", wide=True)
 
     _gap("1rem")
 
     dc1, dc2, dc3 = st.columns(3)
 
     with dc1:
-        st.download_button("Predicted score for all residue pairs (.txt)", files[f"{stem}-final-prediction.txt"],
-                           file_name=f"{stem}-final-prediction.txt", use_container_width=True)
-        st.download_button("Predicted score for top 200 residue pairs (.tsv)", files[f"{stem}-top200.tsv"],
-                           file_name=f"{stem}-top200.tsv", use_container_width=True)
-        st.download_button("Run summary (.tsv)", files[f"{stem}-summary.tsv"],
-                           file_name=f"{stem}-summary.tsv", use_container_width=True)
+        _download_link("Predicted score for all residue pairs (.txt)",
+                       files[f"{stem}-final-prediction.txt"],
+                       f"{stem}-final-prediction.txt", "text/plain")
+        _download_link("Predicted score for top 200 residue pairs (.tsv)",
+                       files[f"{stem}-top200.tsv"],
+                       f"{stem}-top200.tsv", "text/tab-separated-values")
+        _download_link("Run summary (.tsv)", files[f"{stem}-summary.tsv"],
+                       f"{stem}-summary.tsv", "text/tab-separated-values")
 
     with dc2:
-        st.download_button("Residue wise Propensities (.tsv)", files[f"{stem}-residue-propensities.tsv"],
-                           file_name=f"{stem}-residue-propensities.tsv", use_container_width=True)
-        st.download_button("Residue pair score matrix (.tsv)", files[f"{stem}-score-matrix.tsv"],
-                           file_name=f"{stem}-score-matrix.tsv", use_container_width=True)
-        st.download_button("Linear contact map (.svg)", files[f"{stem}-contact-map.svg"],
-                           file_name=f"{stem}-contact-map.svg", mime="image/svg+xml",
-                           use_container_width=True)
+        _download_link("Residue wise Propensities (.tsv)",
+                       files[f"{stem}-residue-propensities.tsv"],
+                       f"{stem}-residue-propensities.tsv", "text/tab-separated-values")
+        _download_link("Residue pair score matrix (.tsv)",
+                       files[f"{stem}-score-matrix.tsv"],
+                       f"{stem}-score-matrix.tsv", "text/tab-separated-values")
+        _download_link("Linear contact map (.svg)", files[f"{stem}-contact-map.svg"],
+                       f"{stem}-contact-map.svg", "image/svg+xml")
 
     with dc3:
-        st.download_button("Predicted score for target protein (.chain1)", files[f"{stem}-sspred.chain1"],
-                           file_name=f"{stem}-sspred.chain1", use_container_width=True)
-        st.download_button("Predicted score for partner protein (.chain2)", files[f"{stem}-sspred.chain2"],
-                           file_name=f"{stem}-sspred.chain2", use_container_width=True)
+        _download_link("Predicted score for target protein (.chain1)",
+                       files[f"{stem}-sspred.chain1"],
+                       f"{stem}-sspred.chain1", "text/plain")
+        _download_link("Predicted score for partner protein (.chain2)",
+                       files[f"{stem}-sspred.chain2"],
+                       f"{stem}-sspred.chain2", "text/plain")
 
     _gap("1.2rem")
     st.markdown("##### Figures")
@@ -1064,8 +1109,7 @@ with tab_downloads:
         else:
             continue
         with fcols[i % 3]:
-            st.download_button(f"{label} ({ext})", data, file_name=fname,
-                               mime=mime, use_container_width=True)
+            _download_link(f"{label} ({ext})", data, fname, mime)
 
     if not any(k.endswith(".png") for k in files):
         st.caption("Server-side PNG rendering is unavailable here, so these download as "
