@@ -430,10 +430,10 @@ with st.container(border=True):
 if "results" not in st.session_state:
     with st.container(border=True):
         st.markdown("#### Scientific Background")
-        st.markdown("Computational prediction of protein-protein interaction (PPI) interfaces is a fundamental challenge in structural biology. Traditional machine-learning methods are often 'partner-unaware'—they attempt to identify binding sites on a single protein in isolation. This suite is built upon the foundational partner-aware algorithm established by Professor Shandar Ahmad and Kenji Mizuguchi.")
+        st.markdown("Computational prediction of protein-protein interaction (PPI) interfaces is a fundamentally challenging task in structural biology. Traditional machine-learning methods are often 'partner-unaware'—they attempt to identify binding sites on a single protein in isolation. This engine is built upon the  partner-aware algorithm established by Professor Shandar Ahmad and Kenji Mizuguchi.")
         st.markdown("By evaluating the sequence-derived Position-Specific Scoring Matrices (PSSMs) of both the target and the partner protein simultaneously, the model captures complementary residue pairing. This drastically reduces false-positive predictions, as it explicitly requires the binding partner to possess a compatible interface region.")
         st.markdown("---")
-        st.markdown("##### Pipeline Architecture ")
+        st.markdown("#### Pipeline Architecture ")
         st.markdown("1. **Stage-1 Composition:** Extract the pattern (sparse sequence encoding and PSSM-based evolutionary profile) features from the protein pair.")
         st.markdown("2. **Neural Network:** Consider multiple window sizes (0, 1, 3, 5, 7) across sequences to capture the local neighborhood impact of protein pairs and train 24 distinct Artificial Neural Networks to score candidate interactions.")
         st.markdown("3. **Stage-2 Composition:** The parallel predictions are concatenated column-wise, fusing the 24 independent neural network outputs.")
