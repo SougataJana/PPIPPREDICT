@@ -6,6 +6,7 @@ Strictly validated against Ahmad & Mizuguchi (2011).
 import io
 import time
 import re
+import zipfile
 
 import numpy as np
 import pandas as pd
@@ -196,20 +197,29 @@ div.stButton > button:first-child:hover {
 }
 
 /* Results section headings: bold and bright */
-[data-testid="stMarkdownContainer"] h3 {
-  color: #f8fafc !important; font-weight: 800 !important; font-size: 1.65rem !important;
+h1, h2, h3, h4, h5, h6,
+[data-testid="stMarkdownContainer"] h1, [data-testid="stMarkdownContainer"] h2,
+[data-testid="stMarkdownContainer"] h3, [data-testid="stMarkdownContainer"] h4,
+[data-testid="stMarkdownContainer"] h5, [data-testid="stMarkdownContainer"] h6 {
+  font-weight: 800 !important;
 }
+[data-testid="stMarkdownContainer"] h3 { color: #f8fafc !important; font-size: 1.65rem !important; }
 [data-testid="stMarkdownContainer"] h5 {
-  color: #f8fafc !important; font-weight: 800 !important; font-size: 1.22rem !important;
-  letter-spacing: -0.01em !important;
+  color: #f8fafc !important; font-size: 1.22rem !important; letter-spacing: -0.01em !important;
 }
-.stTabs [data-baseweb="tab"] { font-weight: 800 !important; color: #CBD5E1 !important; }
-.stTabs [data-baseweb="tab"] p,
-.stTabs [data-baseweb="tab"] div,
-.stTabs [data-baseweb="tab"] span {
-  font-weight: 800 !important; font-size: 0.98rem !important; color: inherit !important;
+
+/* Tab labels: bold on every element Streamlit/BaseWeb nests the text in */
+.stTabs button, .stTabs button *,
+button[data-baseweb="tab"], button[data-baseweb="tab"] *,
+[data-baseweb="tab"], [data-baseweb="tab"] *,
+[data-testid="stTabs"] button, [data-testid="stTabs"] button *,
+[role="tab"], [role="tab"] * {
+  font-weight: 800 !important;
 }
-.stTabs [aria-selected="true"] p { color: #00f2fe !important; }
+.stTabs [data-baseweb="tab"], .stTabs [data-baseweb="tab"] * { color: #CBD5E1 !important; }
+.stTabs [data-baseweb="tab"] p, .stTabs [data-baseweb="tab"] div,
+.stTabs [data-baseweb="tab"] span { font-size: 0.98rem !important; }
+.stTabs [aria-selected="true"], .stTabs [aria-selected="true"] * { color: #00f2fe !important; }
 
 /* Reset button: hug the right edge instead of filling its column */
 div.stButton.st-key-new_pred, .st-key-new_pred {
@@ -218,7 +228,7 @@ div.stButton.st-key-new_pred, .st-key-new_pred {
 }
 div.stButton.st-key-new_pred, .st-key-new_pred {
   padding-right: 0 !important;
-  margin-right: 0 !important;
+  margin-right: -0.75rem !important;   /* tune this to sit flush with the Runtime tile */
 }
 div.stButton.st-key-new_pred > button:first-child,
 .st-key-new_pred button {
@@ -594,33 +604,88 @@ def _render_reference():
         st.markdown("#### Reference")
         st.markdown('<div style="background: rgba(0, 242, 254, 0.05); border: 1px solid rgba(0, 242, 254, 0.2); padding: 15px; border-radius: 8px;">📖 <a href="https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0029104" target="_blank" style="color: #00f2fe; text-decoration: none;">Ahmad S, Mizuguchi K (2011). Partner-Aware Prediction of Interacting Residues in Protein-Protein Complexes from Sequence Data. PLoS ONE 6(12): e29104.</a></div>', unsafe_allow_html=True)
 
-def _write_legacy_files(results: dict, name1: str, name2: str) -> dict[str, bytes]:
+def _write_legacy_files(results: dict, name1: str, name2: str,
+                        elapsed: float | None = None) -> dict[str, bytes]:
+    """Every result the app shows, as downloadable files. Buffers are written
+    and released one at a time to keep peak memory low."""
     files = {}
+    stem = f"{name1}-{name2}"
 
+    # 1. All scored pairs (legacy final-prediction)
     buf = io.StringIO()
     buf.write("Pair(Seq1:Seq2)\tPrediction-score\n")
     for name, score in results["all_pairs"]:
         buf.write(f"{name}\t{score:.6f}\n")
-    files[f"{name1}-{name2}-final-prediction.txt"] = buf.getvalue().encode()
+    files[f"{stem}-final-prediction.txt"] = buf.getvalue().encode()
+    buf.close()
 
+    # 2. Top 200 ranked pairs, with rank column
     buf = io.StringIO()
-    buf.write("Pair(Seq1:Seq2)\tPrediction-score\n")
-    for name, score in results["top_200"]:
-        buf.write(f"{name}\t{score:.6f}\n")
-    files[f"{name1}-{name2}-top200.txt"] = buf.getvalue().encode()
+    buf.write("Rank\tResidue_pair(Seq1:Seq2)\tPrediction-score\n")
+    for i, (name, score) in enumerate(results["top_200"], 1):
+        buf.write(f"{i}\t{name}\t{score:.6f}\n")
+    files[f"{stem}-top200.tsv"] = buf.getvalue().encode()
+    buf.close()
 
+    # 3. Legacy per-chain profiles
     buf = io.StringIO()
     for res, score in results["chain1"].items():
         buf.write(f"{res} {score:.6f}\n")
-    files[f"{name1}-{name2}-sspred.chain1"] = buf.getvalue().encode()
+    files[f"{stem}-sspred.chain1"] = buf.getvalue().encode()
+    buf.close()
 
     buf = io.StringIO()
     for res, score in results["chain2"].items():
         buf.write(f"{res} {score:.6f}\n")
-    files[f"{name1}-{name2}-sspred.chain2"] = buf.getvalue().encode()
+    files[f"{stem}-sspred.chain2"] = buf.getvalue().encode()
+    buf.close()
 
-    svg = _build_svg(results["top_200"], results["cutoff_score"], f"{name1}-{name2}", name1=name1, name2=name2)
-    files[f"{name1}-{name2}.svg"] = svg.encode()
+    # 4. Residue-wise propensities, both chains in one table
+    buf = io.StringIO()
+    buf.write("Protein\tResidue\tMax_score\n")
+    for r in results["unique_r1"]:
+        buf.write(f"{name1}\t{r}\t{results['chain1'][r]:.6f}\n")
+    for r in results["unique_r2"]:
+        buf.write(f"{name2}\t{r}\t{results['chain2'][r]:.6f}\n")
+    files[f"{stem}-residue-propensities.tsv"] = buf.getvalue().encode()
+    buf.close()
+
+    # 5. Full score matrix (rows = target residues, columns = partner residues)
+    buf = io.StringIO()
+    buf.write("Residue\t" + "\t".join(results["unique_r2"]) + "\n")
+    mat = results["smoothed_matrix"]
+    for i, r in enumerate(results["unique_r1"]):
+        buf.write(r + "\t" + "\t".join(f"{v:.6f}" for v in mat[i]) + "\n")
+    files[f"{stem}-score-matrix.tsv"] = buf.getvalue().encode()
+    buf.close()
+
+    # 6. Run summary
+    top_pair, top_score = results["top_200"][0]
+    buf = io.StringIO()
+    buf.write("Metric\tValue\n")
+    buf.write(f"Target_protein\t{name1}\n")
+    buf.write(f"Partner_protein\t{name2}\n")
+    buf.write(f"Sequence_geometry\t{len(results['unique_r1'])} x {len(results['unique_r2'])}\n")
+    buf.write(f"Scored_pairs\t{len(results['all_pairs'])}\n")
+    buf.write(f"Top200_cutoff_score\t{results['cutoff_score']:.6f}\n")
+    buf.write(f"Peak_pair\t{top_pair}\n")
+    buf.write(f"Peak_score\t{top_score:.6f}\n")
+    if elapsed is not None:
+        buf.write(f"Runtime_seconds\t{elapsed:.2f}\n")
+    files[f"{stem}-summary.tsv"] = buf.getvalue().encode()
+    buf.close()
+
+    # 7. Linear contact map
+    files[f"{stem}-contact-map.svg"] = _build_svg(
+        results["top_200"], results["cutoff_score"], stem, name1=name1, name2=name2).encode()
+
+    # 8. Everything above, zipped
+    zbuf = io.BytesIO()
+    with zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fname, data in files.items():
+            zf.writestr(fname, data)
+    files[f"{stem}-all-results.zip"] = zbuf.getvalue()
+    zbuf.close()
 
     return files
 
@@ -823,7 +888,7 @@ with tab_3d:
 
 with tab_dist:
     st.markdown("##### Score Distribution Histogram")
-    st.caption("Descriptive distribution of scores for all the residue pairs, separating integration signal from backgroun")
+    st.caption("Descriptive distribution of all calculated pair scores, separating interaction signal from background.")
     scores = [s for _, s in results["all_pairs"]]
     fig_hist = go.Figure(data=[go.Histogram(x=scores, nbinsx=100, marker_color="#00f2fe", opacity=0.8)])
     fig_hist.update_layout(
@@ -836,7 +901,7 @@ with tab_dist:
 
 with tab_diagram:
     st.markdown("##### Bipartite Interaction Wiring Diagram")
-    st.caption("Linear projection of candidate interacting residues from top 200 residue pairs")
+    st.caption("Top 200 pairs, drawn on the same geometry as the legacy get-svg.sh. Every contacting residue gets a tick on its axis; text labels are deduplicated and thinned so they never sit on top of each other, with the highest-scoring residues keeping their label.")
     lc1, lc2 = st.columns(2)
     with lc1:
         gap = st.slider("Minimum label spacing (px)", 10, 50, 17, 1,
@@ -862,20 +927,46 @@ with tab_circ:
     st.plotly_chart(fig_circ, use_container_width=True)
 
 with tab_downloads:
-    st.markdown("##### Original Pipeline Outputs")
-    st.caption("Direct exports formatted identically to the legacy pipeline bins.")
-    
-    files = _write_legacy_files(results, name1, name2)
-    dc1, dc2 = st.columns(2)
-    
+    st.markdown("##### Export Result Files")
+    st.markdown(
+        '<p style="color:#94a3b8; font-size:0.97rem; margin:0.35rem 0 1.1rem 0;">'
+        'Every result shown in this session, as tab-separated tables plus the vector diagram. '
+        'The archive contains all of them.</p>', unsafe_allow_html=True)
+
+    files = _write_legacy_files(results, name1, name2, elapsed)
+    stem = f"{name1}-{name2}"
+
+    st.download_button(f"Download everything ({stem}-all-results.zip)",
+                       files[f"{stem}-all-results.zip"],
+                       file_name=f"{stem}-all-results.zip", mime="application/zip",
+                       use_container_width=True)
+
+    _gap("1rem")
+
+    dc1, dc2, dc3 = st.columns(3)
+
     with dc1:
-        st.download_button("Download final-prediction.txt", files[f"{name1}-{name2}-final-prediction.txt"], file_name=f"{name1}-{name2}-final-prediction.txt", use_container_width=True)
-        st.download_button("Download top200.txt", files[f"{name1}-{name2}-top200.txt"], file_name=f"{name1}-{name2}-top200.txt", use_container_width=True)
-        
+        st.download_button("All scored pairs (.txt)", files[f"{stem}-final-prediction.txt"],
+                           file_name=f"{stem}-final-prediction.txt", use_container_width=True)
+        st.download_button("Top 200 residue pairs (.tsv)", files[f"{stem}-top200.tsv"],
+                           file_name=f"{stem}-top200.tsv", use_container_width=True)
+        st.download_button("Run summary (.tsv)", files[f"{stem}-summary.tsv"],
+                           file_name=f"{stem}-summary.tsv", use_container_width=True)
+
     with dc2:
-        st.download_button("Download .chain1 profile", files[f"{name1}-{name2}-sspred.chain1"], file_name=f"{name1}-{name2}-sspred.chain1", use_container_width=True)
-        st.download_button("Download .chain2 profile", files[f"{name1}-{name2}-sspred.chain2"], file_name=f"{name1}-{name2}-sspred.chain2", use_container_width=True)
-        st.download_button("Download SVG Diagram", files[f"{name1}-{name2}.svg"], file_name=f"{name1}-{name2}.svg", mime="image/svg+xml", use_container_width=True)
+        st.download_button("Residue propensities (.tsv)", files[f"{stem}-residue-propensities.tsv"],
+                           file_name=f"{stem}-residue-propensities.tsv", use_container_width=True)
+        st.download_button("Score matrix (.tsv)", files[f"{stem}-score-matrix.tsv"],
+                           file_name=f"{stem}-score-matrix.tsv", use_container_width=True)
+        st.download_button("Linear contact map (.svg)", files[f"{stem}-contact-map.svg"],
+                           file_name=f"{stem}-contact-map.svg", mime="image/svg+xml",
+                           use_container_width=True)
+
+    with dc3:
+        st.download_button("Target profile (.chain1)", files[f"{stem}-sspred.chain1"],
+                           file_name=f"{stem}-sspred.chain1", use_container_width=True)
+        st.download_button("Partner profile (.chain2)", files[f"{stem}-sspred.chain2"],
+                           file_name=f"{stem}-sspred.chain2", use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Reference (always rendered at the foot of the page)
