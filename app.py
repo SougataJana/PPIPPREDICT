@@ -543,9 +543,9 @@ if "results" not in st.session_state:
         st.markdown("#### Upload PSSM Profiles")
         col1, col2 = st.columns(2, gap="large")
         with col1:
-            file1 = st.file_uploader("Protein 1 (Target PSSM)", type=None, key="f1")
+            file1 = st.file_uploader("**UPLOAD** Protein 1 (Target PSSM)", type=None, key="f1")
         with col2:
-            file2 = st.file_uploader(" Protein 2 (Partner PSSM)", type=None, key="f2")
+            file2 = st.file_uploader("**UPLOAD** Protein 2 (Partner PSSM)", type=None, key="f2")
 
         st.markdown("<br>", unsafe_allow_html=True)
         run_clicked = st.button("Execute Interaction Prediction Pipeline", type="primary", disabled=not (file1 and file2))
@@ -599,12 +599,15 @@ elapsed = st.session_state["elapsed"]
 # ---------------------------------------------------------------------------
 # Results Metrics
 # ---------------------------------------------------------------------------
-hcol, rcol = st.columns([4, 1])
+try:
+    hcol, rcol = st.columns([3, 1], vertical_alignment="center")
+except TypeError:  # vertical_alignment lands in Streamlit 1.36
+    hcol, rcol = st.columns([3, 1])
 with hcol:
     st.markdown("### Executed Results")
     st.caption(f"{name1} vs {name2}")
 with rcol:
-    if st.button("New prediction"):
+    if st.button("Go for New Prediction"):
         for _k in ("results", "name1", "name2", "elapsed", "f1", "f2"):
             st.session_state.pop(_k, None)
         st.rerun()
@@ -629,7 +632,17 @@ with tab_top:
     st.markdown("##### Top 200 Candidate Contact Pairs")
     df = pd.DataFrame(results["top_200"], columns=["Pair", "Score"])
     df.index = df.index + 1
-    st.dataframe(df.style.background_gradient(subset=["Score"], cmap="GnBu_r"), use_container_width=True, height=500)
+    styled = df.style.background_gradient(subset=["Score"], cmap="GnBu_r").format({"Score": "{:.6f}"})
+    st.dataframe(
+        styled,
+        use_container_width=False,
+        width=520,
+        height=520,
+        column_config={
+            "Pair": st.column_config.TextColumn("Pair", width="small"),
+            "Score": st.column_config.NumberColumn("Score", format="%.6f", width="small"),
+        },
+    )
 
 with tab_chain:
     st.markdown("##### Per-Residue Interface Propensity Profiles")
@@ -723,8 +736,6 @@ with tab_diagram:
     svg_str = _build_svg(results["top_200"], results["cutoff_score"], f"{name1}-{name2}",
                          name1=name1, name2=name2, font_size=fsize, min_gap=float(gap))
     st.components.v1.html(svg_str, height=620, scrolling=True)
-    st.download_button("Download this diagram (SVG)", svg_str.encode(),
-                       file_name=f"{name1}-{name2}-contact-map.svg", mime="image/svg+xml")
 
 with tab_circ:
     st.markdown("##### Circular Contact Map")
