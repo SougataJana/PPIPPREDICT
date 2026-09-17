@@ -203,13 +203,17 @@ def run_batch(profiles: list[dict], pairs: list[tuple[str, str]], models,
 # Batch-level summaries
 # ---------------------------------------------------------------------------
 def batch_summary_rows(batch: dict) -> list[dict]:
-    """One row per pair, ranked by peak score — the batch's headline table."""
+    """One row per pair, ranked by peak score — the batch's headline table.
+
+    Deliberately excludes the smoothed-matrix statistics (mean, SD and the
+    mean+3SD line): they describe the visualisation-only smoothed matrix, not
+    the ranking, and they are not comparable between pairs of different sizes.
+    """
     rows = []
     for key in batch["order"]:
         e = batch["entries"][key]
         top_pair, top_score = e["top_200"][0] if e["top_200"] else ("-", 0.0)
         cutoff = e.get("cutoff_score", 0.0)
-        mat = e["smoothed_matrix"]
         rows.append({
             "Target": e["name1"],
             "Partner": e["name2"],
@@ -218,9 +222,6 @@ def batch_summary_rows(batch: dict) -> list[dict]:
             "Peak_pair": top_pair,
             "Peak_score": round(float(top_score), 6),
             "Top200_cutoff": round(float(cutoff), 6),
-            "Mean_smoothed": round(float(np.mean(mat)), 6),
-            "SD_smoothed": round(float(np.std(mat)), 6),
-            "Signal_threshold": round(float(e.get("threshold", 0.0)), 6),
             "Runtime_s": round(float(e.get("elapsed", 0.0)), 2),
             "_key": key,
         })
