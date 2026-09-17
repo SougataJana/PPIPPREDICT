@@ -183,7 +183,36 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.card-tag) h5 {
   border-top: 2px solid #00f2fe;
 }
 [data-testid="stMetricLabel"] { color: #00f2fe !important; font-size: 0.7rem !important; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
-[data-testid="stMetricValue"] { font-family: 'JetBrains Mono', monospace !important; color: #f8fafc !important; font-size: 1.8rem !important; }
+[data-testid="stMetricValue"] { font-family: 'JetBrains Mono', monospace !important; color: #f8fafc !important; font-size: 1.55rem !important; }
+
+/* Streamlit clips metric labels and values with an ellipsis at narrow widths.
+   Let both wrap instead, so "Sequence Geometry" and "135 x 162" stay readable
+   in a four-column row. */
+[data-testid="stMetricLabel"],
+[data-testid="stMetricLabel"] > div,
+[data-testid="stMetricLabel"] p {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  max-width: 100% !important;
+  line-height: 1.25 !important;
+}
+[data-testid="stMetricValue"],
+[data-testid="stMetricValue"] > div {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  max-width: 100% !important;
+  word-break: break-word !important;
+  line-height: 1.2 !important;
+}
+
+/* Same clipping happens to button labels in a narrow column. */
+.stButton button p, [data-testid="stBaseButton-secondary"] p, [data-testid="stBaseButton-primary"] p {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
 
 /* Futuristic Holographic Tabs */
 .stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom: none; background: rgba(15, 23, 42, 0.8); padding: 6px; border-radius: 14px; }
@@ -736,29 +765,6 @@ _BATCH_MANIFEST = [
 ]
 
 
-def _sample_files() -> list[str]:
-    """PSSM profiles bundled in sample_data/, if the deployment ships them."""
-    if not os.path.isdir(SAMPLE_DIR):
-        return []
-    return sorted(
-        os.path.join(SAMPLE_DIR, f) for f in os.listdir(SAMPLE_DIR)
-        if not f.startswith(".") and os.path.isfile(os.path.join(SAMPLE_DIR, f))
-        and not f.lower().endswith(".zip")
-    )
-
-
-def _sample_zip_bytes(paths: list[str]) -> bytes:
-    """Build the example archive on the fly, so it always matches the bundled
-    profiles and shows the exact layout a batch upload should have."""
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for p in paths:
-            zf.write(p, arcname=os.path.basename(p))
-    data = buf.getvalue()
-    buf.close()
-    return data
-
-
 SAMPLE_OUT_DIR = "sample_output"
 
 
@@ -820,9 +826,9 @@ def _render_sample_preview():
         unsafe_allow_html=True)
 
     q1, q2, q3, q4 = st.columns(4)
-    q1.metric("Sequence Geometry", str(sm.get("Sequence_geometry", "-")))
+    q1.metric("Geometry", str(sm.get("Sequence_geometry", "-")).replace(" x ", "×"))
     q2.metric("Scored Pairs", f'{int(float(sm.get("Scored_pairs", 0))):,}')
-    q3.metric("Peak Interaction", f'{float(sm.get("Peak_score", 0)):.3f}',
+    q3.metric("Peak Score", f'{float(sm.get("Peak_score", 0)):.3f}',
               str(sm.get("Peak_pair", "")))
     q4.metric("Runtime", f'{float(sm.get("Runtime_seconds", 0)):.1f}s')
 
@@ -905,56 +911,6 @@ def _render_sample_section():
         with s2:
             st.dataframe(pd.DataFrame(_BATCH_MANIFEST, columns=["File", "Contents"]),
                          hide_index=True, use_container_width=True)
-
-        samples = _sample_files()
-        if not samples:
-            st.caption(
-                "To enable a one-click demo here, add two or more PSSM profiles to a "
-                "`sample_data/` folder in the repository.")
-            return
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown(
-            f'<p style="color:#B9C4D6; font-size:1.0rem; margin:0 0 0.6rem 0;">'
-            f'Bundled example: <b style="color:#f8fafc;">'
-            f'{", ".join(os.path.basename(p) for p in samples)}</b></p>',
-            unsafe_allow_html=True)
-
-        sc1, sc2 = st.columns(2)
-        with sc1:
-            _download_link("Example ZIP layout for batch upload (.zip)",
-                           _sample_zip_bytes(samples), "ppip-example-pssm-set.zip",
-                           "application/zip")
-        with sc2:
-            if st.button("Run the bundled example", key="run_sample", type="secondary"):
-                sample_profiles = []
-                for p in samples[:bx.MAX_PROFILES]:
-                    with open(p, "rb") as fh:
-                        lines = bx.decode_lines(fh.read())
-                    _, _, residues = read_pssm_from_text(lines)
-                    if len(residues) >= bx.MIN_RESIDUES:
-                        sample_profiles.append(
-                            {"name": os.path.basename(p), "lines": lines,
-                             "n_residues": len(residues)})
-                if len(sample_profiles) < 2:
-                    st.error("The bundled sample_data/ folder does not hold two readable PSSM profiles.")
-                    return
-                names = [p["name"] for p in sample_profiles]
-                sample_pairs = bx.enumerate_pairs(names)
-                prog = st.progress(0.0, text="Running the example...")
-                try:
-                    sbatch = bx.run_batch(
-                        sample_profiles, sample_pairs, models=get_models(),
-                        progress_cb=lambda f, m: prog.progress(min(f, 1.0), text=m),
-                        compact=True)
-                except Exception as e:
-                    prog.empty()
-                    st.error(f"Example run failed: {e}")
-                    return
-                prog.empty()
-                sbatch["is_batch"] = len(sample_pairs) > 1
-                st.session_state["batch"] = sbatch
-                st.rerun()
 
 
 def _write_legacy_files(results: dict, name1: str, name2: str,
@@ -1151,19 +1107,6 @@ if "batch" not in st.session_state:
                     [{"#": i + 1, "Profile": p["name"], "Residues": p["n_residues"]}
                      for i, p in enumerate(profiles)])
                 st.dataframe(prof_df, hide_index=True, use_container_width=True)
-                est = sum(p["n_residues"] for p in profiles) / max(1, len(profiles))
-                st.caption(
-                    f"{len(profiles)} profiles → **{len(pairs)} pair runs** "
-                    f"(every unordered combination{', self-pairs included' if include_self else ''}). "
-                    f"The engine averages both directions internally, so A–B and B–A are one run. "
-                    f"Mean profile length {est:.0f} residues."
-                )
-                if len(pairs) >= 20:
-                    st.info(
-                        f"{len(pairs)} runs will take a few minutes and the browser tab must stay "
-                        "open for the whole batch. Keep the profiles short, or split the set, if "
-                        "the connection is unreliable."
-                    )
             ready = bool(profiles) and len(pairs) > 0
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1250,9 +1193,9 @@ is_batch = bool(batch.get("is_batch")) and len(batch["order"]) > 1
 # Results Metrics
 # ---------------------------------------------------------------------------
 try:
-    hcol, rcol = st.columns([3, 1], vertical_alignment="center")
+    hcol, rcol = st.columns([2.6, 1.4], vertical_alignment="center")
 except TypeError:  # vertical_alignment lands in Streamlit 1.36
-    hcol, rcol = st.columns([3, 1])
+    hcol, rcol = st.columns([2.6, 1.4])
 with hcol:
     st.markdown("### Executed Results")
     if is_batch:
@@ -1262,10 +1205,10 @@ with hcol:
             f'{batch.get("elapsed", 0):.1f}s total</p>', unsafe_allow_html=True)
 with rcol:
     try:
-        _new_pred = st.button("Go for New Prediction", key="new_pred",
+        _new_pred = st.button("New Prediction", key="new_pred",
                               use_container_width=True)
     except TypeError:  # use_container_width on buttons predates this Streamlit
-        _new_pred = st.button("Go for New Prediction", key="new_pred")
+        _new_pred = st.button("New Prediction", key="new_pred")
     if _new_pred:
         for _k in ("batch", "results", "name1", "name2", "elapsed",
                    "f1", "f2", "fzip", "sel_pair", "master_zip"):
@@ -1379,9 +1322,9 @@ _gap("0.6rem")
 top_pair, top_score = results["top_200"][0]
 
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("Sequence Geometry", f"{len(results['unique_r1'])} × {len(results['unique_r2'])}")
-m2.metric("Top 200 Cutoff Score", f"{results['cutoff_score']:.4f}")
-m3.metric("Peak Interaction", f"{top_score:.3f}", top_pair)
+m1.metric("Geometry", f"{len(results['unique_r1'])}×{len(results['unique_r2'])}")
+m2.metric("Top 200 Cutoff", f"{results['cutoff_score']:.4f}")
+m3.metric("Peak Score", f"{top_score:.3f}", top_pair)
 m4.metric("Runtime", f"{elapsed:.2f}s")
 
 _gap("1.6rem")
