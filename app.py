@@ -4,7 +4,9 @@ Strictly validated against Ahmad & Mizuguchi (2011).
 """
 
 import base64
+import gc
 import io
+import os
 import time
 import re
 import zipfile
@@ -15,7 +17,8 @@ import plotly
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
-from inference import load_models, run_prediction
+from inference import load_models, run_prediction, pairs_from_matrix, read_pssm_from_text
+import batch as bx
 
 # ---------------------------------------------------------------------------
 # Shared figure typography
@@ -360,6 +363,30 @@ def _ensure_dense_matrix(results: dict):
         
     return results
 
+
+def _expand_compact(results: dict) -> dict:
+    """Give a compact (batch) result the keys the tab code expects.
+
+    Batch entries carry `raw_matrix` instead of the ~36k-entry `all_pairs`
+    list, so a 45-pair batch costs ~20 MB rather than ~300 MB of session
+    state. The list is materialised here for the ONE pair being displayed,
+    then cached on that entry so switching back to it is instant.
+    """
+    if "all_pairs" not in results:
+        results["all_pairs"] = pairs_from_matrix(
+            results["unique_r1"], results["unique_r2"], results["raw_matrix"])
+    if "matrix" not in results:
+        results["matrix"] = results["raw_matrix"]
+    if "cutoff_score" not in results:
+        results["cutoff_score"] = (results["top_200"][-1][1] - 1e-9) if results["top_200"] else 0.0
+    return results
+
+
+def _drop_expansion(results: dict) -> None:
+    """Release the materialised all_pairs list for a pair no longer on screen."""
+    results.pop("all_pairs", None)
+    results.pop("matrix", None)
+
 def _build_svg(top_200_pairs: list, cutoff: float, label: str,
                name1: str = "Chain 1", name2: str = "Chain 2",
                font_size: int = 15, min_gap: float = 17.0) -> str:
@@ -686,20 +713,153 @@ def _render_reference():
         st.markdown("#### Reference")
         st.markdown('<div style="background: rgba(0, 242, 254, 0.05); border: 1px solid rgba(0, 242, 254, 0.2); padding: 15px; border-radius: 8px;">📖 <a href="https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0029104" target="_blank" style="color: #00f2fe; text-decoration: none;">Ahmad S, Mizuguchi K (2011). Partner-Aware Prediction of Interacting Residues in Protein-Protein Complexes from Sequence Data. PLoS ONE 6(12): e29104.</a></div>', unsafe_allow_html=True)
 
+SAMPLE_DIR = "sample_data"
+
+# What a run returns, described once and reused by the sample section.
+_OUTPUT_MANIFEST = [
+    ("<pair>-final-prediction.tsv", "Every scored residue pair (target residue : partner residue) with its ensemble score."),
+    ("<pair>-top200.tsv", "The 200 highest-scoring residue pairs, ranked, as used for the contact maps."),
+    ("<pair>-residue-propensities.tsv", "Per-residue interface propensity for both chains: the best score each residue reaches against any partner residue."),
+    ("<pair>-score-matrix.tsv", "The full target × partner score matrix (smoothed), one row per target residue."),
+    ("<pair>-summary.tsv", "Run metadata: geometry, pair count, top-200 cutoff, peak pair and score, runtime."),
+    ("<pair>-sspred.chain1 / .chain2", "Legacy per-chain profile files, in the original server's format."),
+    ("<pair>-contact-map.svg", "Linear bipartite wiring diagram of the top 200 pairs, vector format."),
+    ("<pair>-<figure>.png / .html", "Heatmap, 3D landscape, circular map, score histogram and both propensity plots."),
+    ("<pair>-all-results.zip", "All of the above for that one pair."),
+]
+
+_BATCH_MANIFEST = [
+    ("ppip-batch-summary.tsv", "One row per protein pair, ranked by peak score, with cutoff, mean, SD and runtime."),
+    ("ppip-batch-top200-global.tsv", "The 200 best residue pairs found anywhere in the batch, each tagged with its protein pair."),
+    ("batch-pair-peak-score-matrix.tsv", "Protein × protein matrix of peak scores (inside the full archive)."),
+    ("ppip-batch-all-results.zip", "One folder per pair, each holding that pair's complete file set, plus the batch tables."),
+]
+
+
+def _sample_files() -> list[str]:
+    """PSSM profiles bundled in sample_data/, if the deployment ships them."""
+    if not os.path.isdir(SAMPLE_DIR):
+        return []
+    return sorted(
+        os.path.join(SAMPLE_DIR, f) for f in os.listdir(SAMPLE_DIR)
+        if not f.startswith(".") and os.path.isfile(os.path.join(SAMPLE_DIR, f))
+        and not f.lower().endswith(".zip")
+    )
+
+
+def _sample_zip_bytes(paths: list[str]) -> bytes:
+    """Build the example archive on the fly, so it always matches the bundled
+    profiles and shows the exact layout a batch upload should have."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for p in paths:
+            zf.write(p, arcname=os.path.basename(p))
+    data = buf.getvalue()
+    buf.close()
+    return data
+
+
+def _render_sample_section():
+    """Sample output: what the server returns, before uploading anything."""
+    st.markdown(
+        '<h4 style="color:#00f2fe; font-size:1.35rem; font-weight:700; margin:0 0 0.6rem 0;">'
+        'Sample Output</h4>', unsafe_allow_html=True)
+
+    with _card(key="sample_card"):
+        st.markdown(
+            '<p style="color:#B9C4D6; font-size:1.0rem; line-height:1.6; margin:0 0 0.8rem 0;">'
+            'Every run produces the tables and figures listed below. In batch mode the same set is '
+            'produced for each protein pair, inside one folder per pair, alongside batch-level tables.</p>',
+            unsafe_allow_html=True)
+
+        s1, s2 = st.tabs(["Per-pair files", "Batch-level files"])
+        with s1:
+            st.dataframe(pd.DataFrame(_OUTPUT_MANIFEST, columns=["File", "Contents"]),
+                         hide_index=True, use_container_width=True)
+        with s2:
+            st.dataframe(pd.DataFrame(_BATCH_MANIFEST, columns=["File", "Contents"]),
+                         hide_index=True, use_container_width=True)
+
+        samples = _sample_files()
+        if not samples:
+            st.caption(
+                "To enable a one-click demo here, add two or more PSSM profiles to a "
+                "`sample_data/` folder in the repository.")
+            return
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown(
+            f'<p style="color:#B9C4D6; font-size:1.0rem; margin:0 0 0.6rem 0;">'
+            f'Bundled example: <b style="color:#f8fafc;">'
+            f'{", ".join(os.path.basename(p) for p in samples)}</b></p>',
+            unsafe_allow_html=True)
+
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            _download_link("Example ZIP layout for batch upload (.zip)",
+                           _sample_zip_bytes(samples), "ppip-example-pssm-set.zip",
+                           "application/zip")
+        with sc2:
+            if st.button("Run the bundled example", key="run_sample", type="secondary"):
+                sample_profiles = []
+                for p in samples[:bx.MAX_PROFILES]:
+                    with open(p, "rb") as fh:
+                        lines = bx.decode_lines(fh.read())
+                    _, _, residues = read_pssm_from_text(lines)
+                    if len(residues) >= bx.MIN_RESIDUES:
+                        sample_profiles.append(
+                            {"name": os.path.basename(p), "lines": lines,
+                             "n_residues": len(residues)})
+                if len(sample_profiles) < 2:
+                    st.error("The bundled sample_data/ folder does not hold two readable PSSM profiles.")
+                    return
+                names = [p["name"] for p in sample_profiles]
+                sample_pairs = bx.enumerate_pairs(names)
+                prog = st.progress(0.0, text="Running the example...")
+                try:
+                    sbatch = bx.run_batch(
+                        sample_profiles, sample_pairs, models=get_models(),
+                        progress_cb=lambda f, m: prog.progress(min(f, 1.0), text=m),
+                        compact=True)
+                except Exception as e:
+                    prog.empty()
+                    st.error(f"Example run failed: {e}")
+                    return
+                prog.empty()
+                sbatch["is_batch"] = len(sample_pairs) > 1
+                st.session_state["batch"] = sbatch
+                st.rerun()
+
+
 def _write_legacy_files(results: dict, name1: str, name2: str,
                         elapsed: float | None = None,
-                        figures: dict | None = None) -> dict[str, bytes]:
+                        figures: dict | None = None,
+                        include_zip: bool = True) -> dict[str, bytes]:
     """Every result the app shows, as downloadable files. Buffers are written
-    and released one at a time to keep peak memory low."""
+    and released one at a time to keep peak memory low.
+
+    Works on both full and compact (batch) results: when `all_pairs` is
+    absent the full pair list is streamed straight out of `raw_matrix`,
+    so packing 45 pairs never materialises 45 pair lists.
+    `include_zip=False` skips the inner archive (used by the master ZIP,
+    which would otherwise nest a zip per pair).
+    """
     files = {}
     stem = f"{name1}-{name2}"
 
     # 1. All scored pairs (legacy final-prediction)
     buf = io.StringIO()
     buf.write("Pair(Seq1:Seq2)\tPrediction-score\n")
-    for name, score in results["all_pairs"]:
-        buf.write(f"{name}\t{score:.6f}\n")
-    files[f"{stem}-final-prediction.txt"] = buf.getvalue().encode()
+    if "all_pairs" in results:
+        for name, score in results["all_pairs"]:
+            buf.write(f"{name}\t{score:.6f}\n")
+    else:
+        _mat = results["raw_matrix"]
+        for _i, _r1 in enumerate(results["unique_r1"]):
+            _row = _mat[_i]
+            for _j, _r2 in enumerate(results["unique_r2"]):
+                buf.write(f"{_r1}:{_r2}\t{float(_row[_j]):.6f}\n")
+    files[f"{stem}-final-prediction.tsv"] = buf.getvalue().encode()
     buf.close()
 
     # 2. Top 200 ranked pairs, with rank column
@@ -778,6 +938,8 @@ def _write_legacy_files(results: dict, name1: str, name2: str,
             pass
 
     # 9. Everything above, zipped
+    if not include_zip:
+        return files
     zbuf = io.BytesIO()
     with zipfile.ZipFile(zbuf, "w", zipfile.ZIP_DEFLATED) as zf:
         for fname, data in files.items():
@@ -797,7 +959,7 @@ st.markdown('<p class="hero-sub">Artificial Neural Network for Protein-Protein I
 # Landing view: methodology first, then ingestion. Replaced entirely by the
 # results view once a prediction has been executed.
 # ---------------------------------------------------------------------------
-if "results" not in st.session_state:
+if "batch" not in st.session_state:
     # Background + pipeline architecture, one card
     st.markdown(
         f'''<div style="{CARD_BOX}">
@@ -813,20 +975,79 @@ if "results" not in st.session_state:
     st.markdown(
         '<h4 style="color:#00f2fe; font-size:1.35rem; font-weight:700; margin:0 0 0.6rem 0;">'
         'Upload PSSM Profiles</h4>', unsafe_allow_html=True)
+
     with _card(key="upload_card"):
-        col1, col2 = st.columns(2, gap="large")
-        with col1:
-            file1 = st.file_uploader("Protein 1 (Target PSSM)", type=None, key="f1")
-        with col2:
-            file2 = st.file_uploader("Protein 2 (Partner PSSM)", type=None, key="f2")
+        mode = st.radio(
+            "Submission mode",
+            ["Single pair — two PSSM files", f"Batch — one ZIP of up to {bx.MAX_PROFILES} PSSM profiles"],
+            horizontal=True, key="mode",
+        )
+        is_batch = mode.startswith("Batch")
+
+        profiles, pairs, zip_error = [], [], None
+        file1 = file2 = None
+
+        if not is_batch:
+            col1, col2 = st.columns(2, gap="large")
+            with col1:
+                file1 = st.file_uploader("Protein 1 (Target PSSM)", type=None, key="f1")
+            with col2:
+                file2 = st.file_uploader("Protein 2 (Partner PSSM)", type=None, key="f2")
+            ready = bool(file1 and file2)
+        else:
+            zfile = st.file_uploader(
+                f"ZIP archive containing 2–{bx.MAX_PROFILES} PSSM profiles",
+                type=["zip"], key="fzip",
+                help="One PSI-BLAST ASCII PSSM per file, flat or in folders. "
+                     "Every unordered pair of profiles is scored.",
+            )
+            include_self = st.checkbox(
+                "Also score each profile against itself (homodimer pairs)",
+                value=False, key="self_pairs",
+            )
+            if zfile is not None:
+                try:
+                    profiles = bx.extract_pssm_zip(zfile.getvalue())
+                except bx.BatchInputError as e:
+                    zip_error = str(e)
+                except Exception as e:  # unreadable member, odd encoding, etc.
+                    zip_error = f"Could not read the archive: {e}"
+
+            if zip_error:
+                st.error(zip_error)
+            elif profiles:
+                warn = profiles[0].get("_warning")
+                if warn:
+                    st.warning(warn)
+                names = [p["name"] for p in profiles]
+                pairs = bx.enumerate_pairs(names, include_self=include_self)
+                prof_df = pd.DataFrame(
+                    [{"#": i + 1, "Profile": p["name"], "Residues": p["n_residues"]}
+                     for i, p in enumerate(profiles)])
+                st.dataframe(prof_df, hide_index=True, use_container_width=True)
+                est = sum(p["n_residues"] for p in profiles) / max(1, len(profiles))
+                st.caption(
+                    f"{len(profiles)} profiles → **{len(pairs)} pair runs** "
+                    f"(every unordered combination{', self-pairs included' if include_self else ''}). "
+                    f"The engine averages both directions internally, so A–B and B–A are one run. "
+                    f"Mean profile length {est:.0f} residues."
+                )
+                if len(pairs) >= 20:
+                    st.info(
+                        f"{len(pairs)} runs will take a few minutes and the browser tab must stay "
+                        "open for the whole batch. Keep the profiles short, or split the set, if "
+                        "the connection is unreliable."
+                    )
+            ready = bool(profiles) and len(pairs) > 0
 
         st.markdown("<br>", unsafe_allow_html=True)
-        run_clicked = st.button("Execute Interaction Prediction Pipeline", type="primary", disabled=not (file1 and file2))
+        run_clicked = st.button("Execute Interaction Prediction Pipeline",
+                                type="primary", disabled=not ready)
 
     # -----------------------------------------------------------------------
     # Main Execution Logic
     # -----------------------------------------------------------------------
-    if run_clicked and file1 and file2:
+    if run_clicked and not is_batch and file1 and file2:
         lines1 = _safe_decode(file1)
         lines2 = _safe_decode(file2)
 
@@ -838,9 +1059,8 @@ if "results" not in st.session_state:
         t0 = time.time()
         with st.spinner("Scoring candidate interactions across 24-network ensemble..."):
             try:
-                from inference import run_prediction
-
-                results = run_prediction(lines1, lines2, models=get_models())
+                results = run_prediction(lines1, lines2, models=get_models(),
+                                         progress_cb=_progress_cb)
                 results = _ensure_dense_matrix(results)
             except Exception as e:
                 progress.empty()
@@ -850,13 +1070,45 @@ if "results" not in st.session_state:
         elapsed = time.time() - t0
         progress.empty()
 
-        st.session_state["results"] = results
-        st.session_state["name1"] = file1.name
-        st.session_state["name2"] = file2.name
-        st.session_state["elapsed"] = elapsed
-
-        # Rerun so the landing view is replaced by the results view only
+        results["name1"], results["name2"] = file1.name, file2.name
+        results["elapsed"] = elapsed
+        key = bx.pair_key(file1.name, file2.name)
+        st.session_state["batch"] = {
+            "order": [key],
+            "entries": {key: results},
+            "names": [file1.name, file2.name],
+            "elapsed": elapsed,
+            "is_batch": False,
+        }
         st.rerun()
+
+    if run_clicked and is_batch and profiles:
+        progress = st.progress(0.0, text="Preparing batch...")
+
+        def _batch_cb(frac, msg):
+            progress.progress(min(max(frac, 0.0), 1.0), text=msg)
+
+        t0 = time.time()
+        with st.spinner(f"Scoring {len(pairs)} protein pairs across the 24-network ensemble..."):
+            try:
+                batch = bx.run_batch(profiles, pairs, models=get_models(),
+                                     progress_cb=_batch_cb, compact=True)
+            except Exception as e:
+                progress.empty()
+                st.error(f"Batch prediction failed: {e}")
+                st.stop()
+        progress.empty()
+
+        batch["is_batch"] = True
+        batch["elapsed"] = time.time() - t0
+        st.session_state["batch"] = batch
+        st.rerun()
+
+    # -----------------------------------------------------------------------
+    # Sample output — what a run produces, before anyone uploads anything
+    # -----------------------------------------------------------------------
+    _gap()
+    _render_sample_section()
 
     _gap("0.6rem")   # tighter than SECTION_GAP: pulls the reference block up
     _render_reference()
@@ -865,11 +1117,8 @@ if "results" not in st.session_state:
 # ---------------------------------------------------------------------------
 # Results view
 # ---------------------------------------------------------------------------
-results = st.session_state["results"]
-name1 = st.session_state["name1"]
-name2 = st.session_state["name2"]
-elapsed = st.session_state["elapsed"]
-stem_name = f"{name1}-{name2}"
+batch = st.session_state["batch"]
+is_batch = bool(batch.get("is_batch")) and len(batch["order"]) > 1
 
 # ---------------------------------------------------------------------------
 # Results Metrics
@@ -880,9 +1129,11 @@ except TypeError:  # vertical_alignment lands in Streamlit 1.36
     hcol, rcol = st.columns([3, 1])
 with hcol:
     st.markdown("### Executed Results")
-    st.markdown(
-        f'<p style="font-weight:700; color:#B9C4D6; font-size:1rem; margin:0.15rem 0 0 0;">'
-        f'{name1} vs {name2}</p>', unsafe_allow_html=True)
+    if is_batch:
+        st.markdown(
+            f'<p style="font-weight:700; color:#B9C4D6; font-size:1rem; margin:0.15rem 0 0 0;">'
+            f'{len(batch["names"])} profiles · {len(batch["order"])} pair runs · '
+            f'{batch.get("elapsed", 0):.1f}s total</p>', unsafe_allow_html=True)
 with rcol:
     try:
         _new_pred = st.button("Go for New Prediction", key="new_pred",
@@ -890,13 +1141,114 @@ with rcol:
     except TypeError:  # use_container_width on buttons predates this Streamlit
         _new_pred = st.button("Go for New Prediction", key="new_pred")
     if _new_pred:
-        for _k in ("results", "name1", "name2", "elapsed", "f1", "f2"):
+        for _k in ("batch", "results", "name1", "name2", "elapsed",
+                   "f1", "f2", "fzip", "sel_pair", "master_zip"):
             st.session_state.pop(_k, None)
         for _k in [k for k in st.session_state if str(k).startswith("exports::")]:
             st.session_state.pop(_k, None)
+        gc.collect()
         st.rerun()
 
 _gap("1rem")
+
+# ---------------------------------------------------------------------------
+# Batch overview: ranked pair table, protein x protein map, batch exports.
+# Skipped entirely for a single-pair run, which keeps that view as it was.
+# ---------------------------------------------------------------------------
+if is_batch:
+    _rows = bx.batch_summary_rows(batch)
+    _label = {r["_key"]: f'{r["Target"]} vs {r["Partner"]}  ·  peak {r["Peak_score"]:.3f}'
+              for r in _rows}
+
+    ov1, ov2 = st.tabs(["Batch Overview", "Batch Exports"])
+
+    with ov1:
+        st.markdown("##### All pair runs, ranked by peak interaction score")
+        st.caption("One row per protein pair. Select a pair below to open its full result set.")
+        _df = pd.DataFrame([{k: v for k, v in r.items() if not k.startswith("_")}
+                            for r in _rows])
+        _df.insert(0, "Rank", range(1, len(_df) + 1))
+        st.dataframe(_df, hide_index=True, use_container_width=True, height=min(520, 60 + 35 * len(_df)))
+
+        _gap("1rem")
+        st.markdown("##### Protein × protein peak-score map")
+        st.caption("Highest residue-pair score reached by each combination. Blank cells were not run.")
+        _names, _pmat = bx.pair_score_matrix(batch)
+        _figp = go.Figure(data=go.Heatmap(
+            z=_pmat, x=_names, y=_names,
+            colorscale=[[0, "#030712"], [0.25, "#1e1b4b"], [0.5, "#0284c7"],
+                        [0.75, "#00f2fe"], [1.0, "#f43f5e"]],
+            hovertemplate="%{y} vs %{x}<br>peak %{z:.4f}<extra></extra>",
+            colorbar=dict(title=dict(text="<b>Peak</b>", font=_font(15)), tickfont=_font(13)),
+        ))
+        _figp.update_layout(
+            height=520, margin=dict(l=10, r=10, t=10, b=10),
+            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=_font(14),
+            xaxis=dict(tickfont=_font(12)), yaxis=dict(tickfont=_font(12), autorange="reversed"),
+        )
+        st.plotly_chart(_figp, use_container_width=True,
+                        config=_plot_config("ppip-batch-pair-map"))
+
+    with ov2:
+        st.markdown("##### Batch-level exports")
+        st.caption("Batch tables are built instantly; the full archive packs every pair's files "
+                   "one at a time, so it takes a moment on large batches.")
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            _download_link("Batch summary, one row per pair (.tsv)",
+                           bx.batch_summary_tsv(batch), "ppip-batch-summary.tsv",
+                           "text/tab-separated-values")
+        with bc2:
+            _download_link("Global top 200 residue pairs across the batch (.tsv)",
+                           bx.global_top_tsv(batch), "ppip-batch-top200-global.tsv",
+                           "text/tab-separated-values")
+
+        _gap("0.8rem")
+        if st.button("Build full batch archive (all pairs, all tables)", key="build_master"):
+            _mp = st.progress(0.0, text="Packing...")
+            try:
+                st.session_state["master_zip"] = bx.build_master_zip(
+                    batch,
+                    lambda r, n1, n2, el: _write_legacy_files(r, n1, n2, el, include_zip=False),
+                    progress_cb=lambda f, m: _mp.progress(min(f, 1.0), text=m),
+                )
+            except Exception as e:
+                st.error(f"Could not build the archive: {e}")
+            _mp.empty()
+        _zp = st.session_state.get("master_zip")
+        if _zp and os.path.exists(_zp):
+            st.download_button(
+                f"Download ppip-batch-all-results.zip ({os.path.getsize(_zp) / 1e6:.1f} MB)",
+                data=open(_zp, "rb"), file_name="ppip-batch-all-results.zip",
+                mime="application/zip", use_container_width=True)
+
+    _gap("1.2rem")
+    _sel = st.selectbox("Open a pair", batch["order"], key="sel_pair",
+                        format_func=lambda k: _label.get(k, k),
+                        index=batch["order"].index(_rows[0]["_key"]) if _rows else 0)
+else:
+    _sel = batch["order"][0]
+
+# Expand only the pair being displayed; release the previous one so a batch
+# never holds more than one materialised pair list at a time.
+for _k in batch["order"]:
+    if _k != _sel:
+        _drop_expansion(batch["entries"][_k])
+results = _expand_compact(batch["entries"][_sel])
+name1, name2 = results["name1"], results["name2"]
+elapsed = results.get("elapsed", 0.0)
+stem_name = f"{name1}-{name2}"
+
+if is_batch:
+    st.markdown(
+        f'<p style="font-weight:700; color:#00f2fe; font-size:1.05rem; margin:0.4rem 0 0 0;">'
+        f'{name1} vs {name2}</p>', unsafe_allow_html=True)
+else:
+    st.markdown(
+        f'<p style="font-weight:700; color:#B9C4D6; font-size:1rem; margin:0.15rem 0 0 0;">'
+        f'{name1} vs {name2}</p>', unsafe_allow_html=True)
+
+_gap("0.6rem")
 
 top_pair, top_score = results["top_200"][0]
 
@@ -1046,6 +1398,13 @@ with tab_downloads:
     stem = f"{name1}-{name2}"
     _export_key = f"exports::{stem}"
     if _export_key not in st.session_state:
+        # Only the pair on screen keeps an export bundle: with 45 pairs,
+        # caching every visited pair's figures would grow session state
+        # without bound.
+        for _old in [k for k in st.session_state
+                     if str(k).startswith("exports::") and k != _export_key]:
+            st.session_state.pop(_old, None)
+        gc.collect()
         with st.spinner("Rendering export files..."):
             st.session_state[_export_key] = _write_legacy_files(
                 results, name1, name2, elapsed, figures=FIGS)
@@ -1060,9 +1419,9 @@ with tab_downloads:
     dc1, dc2, dc3 = st.columns(3)
 
     with dc1:
-        _download_link("Predicted score for all residue pairs (.txt)",
-                       files[f"{stem}-final-prediction.txt"],
-                       f"{stem}-final-prediction.txt", "text/plain")
+        _download_link("Predicted score for all residue pairs (.tsv)",
+                       files[f"{stem}-final-prediction.tsv"],
+                       f"{stem}-final-prediction.tsv", "text/tab-separated-values")
         _download_link("Predicted score for top 200 residue pairs (.tsv)",
                        files[f"{stem}-top200.tsv"],
                        f"{stem}-top200.tsv", "text/tab-separated-values")
