@@ -991,7 +991,7 @@ def _write_legacy_files(results: dict, name1: str, name2: str,
     buf.write(f"Target_protein\t{name1}\n")
     buf.write(f"Partner_protein\t{name2}\n")
     buf.write(f"Sequence_geometry\t{len(results['unique_r1'])} x {len(results['unique_r2'])}\n")
-    buf.write(f"Scored_pairs\t{len(results['all_pairs'])}\n")
+    buf.write(f"Scored_pairs\t{results.get('n_scored_pairs') or len(results.get('all_pairs') or []) or len(results['unique_r1']) * len(results['unique_r2'])}\n")
     buf.write(f"Top200_cutoff_score\t{results['cutoff_score']:.6f}\n")
     buf.write(f"Peak_pair\t{top_pair}\n")
     buf.write(f"Peak_score\t{top_score:.6f}\n")
