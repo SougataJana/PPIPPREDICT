@@ -759,6 +759,128 @@ def _sample_zip_bytes(paths: list[str]) -> bytes:
     return data
 
 
+SAMPLE_OUT_DIR = "sample_output"
+
+
+@st.cache_data(show_spinner=False)
+def _load_sample_output(mtimes: tuple) -> dict:
+    """Read the committed sample result tables. Keyed on file mtimes so a
+    redeploy with regenerated sample output invalidates the cache."""
+    out = {}
+    for f in os.listdir(SAMPLE_OUT_DIR):
+        path = os.path.join(SAMPLE_OUT_DIR, f)
+        if not os.path.isfile(path):
+            continue
+        if f.endswith("-summary.tsv"):
+            out["summary"] = pd.read_csv(path, sep="\t")
+        elif f.endswith("-top200.tsv"):
+            out["top200"] = pd.read_csv(path, sep="\t")
+        elif f.endswith("-residue-propensities.tsv"):
+            out["propensities"] = pd.read_csv(path, sep="\t")
+        elif f.endswith("-score-matrix.tsv"):
+            out["matrix_path"] = path
+        elif f.endswith("-final-prediction.tsv"):
+            out["all_pairs_path"] = path
+    return out
+
+
+def _sample_output_state() -> tuple:
+    if not os.path.isdir(SAMPLE_OUT_DIR):
+        return ()
+    return tuple(sorted(
+        (f, os.path.getmtime(os.path.join(SAMPLE_OUT_DIR, f)))
+        for f in os.listdir(SAMPLE_OUT_DIR)
+        if os.path.isfile(os.path.join(SAMPLE_OUT_DIR, f))))
+
+
+def _render_sample_preview():
+    """Real results from the bundled example, read from committed files.
+
+    Nothing is computed at page load: the tables were generated once by
+    make_sample_output.py and committed, so a visitor sees genuine output
+    from this exact code and these exact weights before running anything.
+    """
+    state = _sample_output_state()
+    if not state:
+        return False
+    try:
+        data = _load_sample_output(state)
+    except Exception:
+        return False
+    if "summary" not in data or "top200" not in data:
+        return False
+
+    sm = dict(zip(data["summary"]["Metric"], data["summary"]["Value"]))
+    st.markdown(
+        f'<p style="color:#B9C4D6; font-size:1.0rem; margin:0 0 0.8rem 0;">'
+        f'Results below are the real output for '
+        f'<b style="color:#f8fafc;">{sm.get("Target_protein", "?")}</b> vs '
+        f'<b style="color:#f8fafc;">{sm.get("Partner_protein", "?")}</b>, produced by this '
+        f'server and committed to the repository — not computed in your session.</p>',
+        unsafe_allow_html=True)
+
+    q1, q2, q3, q4 = st.columns(4)
+    q1.metric("Sequence Geometry", str(sm.get("Sequence_geometry", "-")))
+    q2.metric("Scored Pairs", f'{int(float(sm.get("Scored_pairs", 0))):,}')
+    q3.metric("Peak Interaction", f'{float(sm.get("Peak_score", 0)):.3f}',
+              str(sm.get("Peak_pair", "")))
+    q4.metric("Runtime", f'{float(sm.get("Runtime_seconds", 0)):.1f}s')
+
+    p1, p2, p3 = st.tabs(["Top residue pairs", "Score matrix", "Run provenance"])
+
+    with p1:
+        st.caption("First 25 rows of the ranked top-200 table.")
+        st.dataframe(data["top200"].head(25), hide_index=True, use_container_width=True)
+
+    with p2:
+        mp = data.get("matrix_path")
+        if not mp:
+            st.caption("Score matrix not included in the committed sample.")
+        else:
+            mdf = pd.read_csv(mp, sep="\t", index_col=0)
+            figs = go.Figure(data=go.Heatmap(
+                z=mdf.values, x=list(mdf.columns), y=list(mdf.index),
+                colorscale=[[0, "#030712"], [0.25, "#1e1b4b"], [0.5, "#0284c7"],
+                            [0.75, "#00f2fe"], [1.0, "#f43f5e"]],
+                colorbar=dict(title=dict(text="<b>Score</b>", font=_font(14)),
+                              tickfont=_font(12)),
+            ))
+            figs.update_layout(
+                height=480, margin=dict(l=10, r=10, t=10, b=10),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=_font(13),
+                xaxis=dict(title=dict(text=f'<b>{sm.get("Partner_protein","")}</b>',
+                                      font=_font(14, "#c084fc")), tickfont=_font(10)),
+                yaxis=dict(title=dict(text=f'<b>{sm.get("Target_protein","")}</b>',
+                                      font=_font(14, "#00f2fe")), tickfont=_font(10)),
+            )
+            st.plotly_chart(figs, use_container_width=True,
+                            config=_plot_config("ppip-sample-score-matrix"))
+
+    with p3:
+        st.caption("Committed with the sample so a published result stays reproducible.")
+        st.dataframe(data["summary"], hide_index=True, use_container_width=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown('<p style="color:#B9C4D6; font-size:0.98rem; margin:0 0 0.5rem 0;">'
+                'Download the complete sample result files:</p>', unsafe_allow_html=True)
+    dl = st.columns(3)
+    _slots = [("top200", "Top 200 residue pairs (.tsv)"),
+              ("propensities", "Residue-wise propensities (.tsv)"),
+              ("summary", "Run summary (.tsv)")]
+    for i, (key, label) in enumerate(_slots):
+        if key in data:
+            with dl[i % 3]:
+                _download_link(label,
+                               data[key].to_csv(sep="\t", index=False).encode(),
+                               f"ppip-sample-{key}.tsv", "text/tab-separated-values")
+    if data.get("all_pairs_path"):
+        with dl[0]:
+            st.caption(f'Full scored-pair table: '
+                       f'{os.path.getsize(data["all_pairs_path"]) / 1e6:.1f} MB in the repository '
+                       f'under {SAMPLE_OUT_DIR}/.')
+    return True
+
+
 def _render_sample_section():
     """Sample output: what the server returns, before uploading anything."""
     st.markdown(
@@ -766,6 +888,10 @@ def _render_sample_section():
         'Sample Output</h4>', unsafe_allow_html=True)
 
     with _card(key="sample_card"):
+        _has_preview = _render_sample_preview()
+
+        if _has_preview:
+            _gap("1rem")
         st.markdown(
             '<p style="color:#B9C4D6; font-size:1.0rem; line-height:1.6; margin:0 0 0.8rem 0;">'
             'Every run produces the tables and figures listed below. In batch mode the same set is '
